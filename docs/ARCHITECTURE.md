@@ -2,9 +2,42 @@
 
 ## Overview
 
-AegisRT is a layered edge AI runtime architecture designed for deterministic, explainable, and resource-constrained inference. The system decomposes into four primary layers, each with explicit responsibilities and minimal cross-layer coupling.
+AegisRT is a **GPU resource orchestrator** for deterministic, multi-model edge AI inference. It sits above existing inference runtimes (TensorRT, TVM Runtime, ONNX Runtime) and manages the GPU resources they compete for: CUDA streams, device memory, compute time, and scheduling priority.
 
-**Design Philosophy:** Separation of concerns, explicit resource ownership, and observability as first-class constraint.
+The system decomposes into five primary layers, each with explicit responsibilities and minimal cross-layer coupling.
+
+**Design Philosophy:** Separation of concerns, explicit resource ownership, real-time scheduling theory, and observability as first-class constraint.
+
+**Key Distinction:** AegisRT does not execute kernels or compile models. It orchestrates existing runtimes, providing deterministic scheduling, memory management, context isolation, and observability that no individual runtime provides on its own.
+
+---
+
+## System Position
+
+```
++---------------------------------------------------------------+
+|                    Application Layer                           |
+|  (Autonomous Driving Pipeline, Robotics, Edge AI Services)    |
++---------------------------------------------------------------+
+                              |
+                              v
++---------------------------------------------------------------+
+|                    AegisRT Orchestrator                        |
+|  Layer 5: Observability (tracing, metrics, audit)             |
+|  Layer 4: Scheduling Policy (RMS, EDF, admission control)     |
+|  Layer 3: Cross-Model Memory Orchestration                    |
+|  Layer 2: Execution Context Isolation                         |
+|  Layer 1: CUDA Runtime Abstraction                            |
++---------------------------------------------------------------+
+                         |         |
+                    +----v---+ +---v------+
+                    |  TRT   | | TVM RT   |  <-- Existing Runtimes
+                    +--------+ +----------+
+                         |         |
+                    +----v---------v-----+
+                    |   CUDA Runtime     |
+                    +--------------------+
+```
 
 ---
 
@@ -29,60 +62,86 @@ AegisRT is a layered edge AI runtime architecture designed for deterministic, ex
 
 ---
 
-### Layer 2: Memory Management
+### Layer 2: Execution Context Isolation
 
-**Responsibility:** Provide explicit device memory allocation with deterministic lifetimes.
+**Responsibility:** Provide per-model execution contexts with hard resource budgets and fault isolation.
 
 **Components:**
-- `DeviceMemoryPool`: Allocates and tracks device memory
-- `DeviceBuffer`: RAII wrapper for device memory allocation
-- `MemoryPlanner`: Computes static memory allocation plan from tensor lifetimes
-- `LifetimeAnalyser`: Computes tensor lifetimes from execution graph
+- `ExecutionContext`: Per-model resource container (streams, memory budget, fault boundary)
+- `ResourceBudget`: Hard limits on memory, stream count, and compute time per model
+- `FaultBoundary`: Isolates CUDA errors to the originating context
+- `RuntimeBackend`: Abstract interface wrapping existing runtimes (TensorRT, TVM, etc.)
 
 **Key Invariants:**
-- Memory allocation occurs only during graph construction (not during execution)
-- Allocation failures are explicit (no hidden retry or compaction)
-- Tensor lifetimes are statically analysable
+- Each model executes within its own context (no shared mutable state)
+- Resource budgets are hard limits (exceeding triggers explicit rejection)
+- One model's failure does not propagate to other models
+- Runtime backends are opaque (AegisRT controls resources, not execution internals)
 
 **Dependencies:** Layer 1 (CUDA Runtime Abstraction)
 
 ---
 
-### Layer 3: Execution Orchestration
+### Layer 3: Cross-Model Memory Orchestration
 
-**Responsibility:** Execute computation graphs on GPU with explicit dependency tracking.
+**Responsibility:** Manage device memory across multiple models with lifetime-aware sharing and explicit pressure handling.
 
 **Components:**
-- `ExecutionGraph`: Immutable DAG representation of computation
-- `Executor`: Stateless kernel invocation layer
-- `DependencyTracker`: Manages CUDA events for synchronisation
-- `GraphCapture`: Captures execution as CUDA Graph (optional optimisation)
+- `MemoryOrchestrator`: Coordinates memory allocation across all execution contexts
+- `LifetimeAnalyser`: Computes tensor lifetimes and identifies sharing opportunities
+- `MemoryPlanner`: Computes static memory allocation plans from cross-model analysis
+- `PressureHandler`: Explicit policies for memory pressure (shed, reject, compact)
 
 **Key Invariants:**
-- Graphs are immutable after construction
-- Execution is deterministic (same graph always executes identically)
-- Dependencies are explicit (event-based synchronisation)
+- Memory allocation occurs only during planning (not during execution)
+- Cross-model sharing is computed statically (no runtime heuristics)
+- Pressure handling uses explicit policies (no hidden eviction)
+- Peak memory usage is statically computable and bounded
 
-**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Memory Management)
+**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Execution Context Isolation)
 
 ---
 
-### Layer 4: Scheduling Policy
+### Layer 4: Scheduling Policy (Core Differentiator)
 
-**Responsibility:** Decide when and on which stream to execute submitted graphs.
+**Responsibility:** Decide when and with what resources to execute submitted workloads, grounded in real-time scheduling theory.
 
 **Components:**
-- `Scheduler`: Central orchestration component
-- `SchedulingPolicy`: Abstract interface for policies (FIFO, Priority, Fairness)
+- `Scheduler`: Central orchestration component with admission control
+- `SchedulingPolicy`: Abstract interface for RT policies (RMS, EDF, Priority)
+- `AdmissionController`: Determines if a new model can be admitted without violating existing guarantees
+- `WCETProfiler`: Maintains worst-case execution time profiles per model
 - `StreamPool`: Manages fixed pool of CUDA streams
 - `OrchestrationLoop`: Main scheduling loop (runs on dedicated thread)
 
 **Key Invariants:**
-- Scheduling policy is explicit and swappable
+- Scheduling policy is explicit, swappable, and grounded in RT theory
+- Admission control runs schedulability analysis before accepting new workloads
+- WCET bounds are maintained and updated via profiling
+- All scheduling decisions are traceable with rationale
 - Stream allocation is deterministic
-- Scheduling decisions are traceable
 
-**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Memory Management), Layer 3 (Execution Orchestration)
+**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Execution Context Isolation), Layer 3 (Cross-Model Memory Orchestration)
+
+---
+
+### Layer 5: Observability
+
+**Responsibility:** Provide full traceability of all scheduling decisions, resource allocations, and execution events.
+
+**Components:**
+- `TraceCollector`: Structured event collection for all layers
+- `MetricsAggregator`: Per-model, per-stream, per-pool resource utilisation
+- `AuditTrail`: Scheduling decision log with rationale (why was model X delayed?)
+- `ExportAdapter`: Integration with standard tooling (Perfetto, NVIDIA Nsight)
+
+**Key Invariants:**
+- Every scheduling decision is logged with sufficient context for reconstruction
+- Tracing does not affect execution correctness (only performance)
+- Metrics are exportable in standard formats
+- Observability is not optional -- it is part of the system contract
+
+**Dependencies:** All layers (cross-cutting concern)
 
 ---
 
@@ -90,31 +149,45 @@ AegisRT is a layered edge AI runtime architecture designed for deterministic, ex
 
 ```
 +---------------------------------------------------------------+
-|                    Layer 4: Scheduling Policy                 |
+|                    Layer 5: Observability                      |
 |                                                               |
 |  +------------------+  +------------------+  +--------------+ |
-|  | Scheduler        |  | SchedulingPolicy |  | StreamPool   | |
-|  | (Orchestration)  |  | (FIFO, Priority) |  | (Fixed Pool) | |
+|  | TraceCollector   |  | MetricsAggregator|  | AuditTrail   | |
+|  | (Structured)     |  | (Per-Model)      |  | (Decisions)  | |
 |  +------------------+  +------------------+  +--------------+ |
 +---------------------------------------------------------------+
                               |
                               v
 +---------------------------------------------------------------+
-|                 Layer 3: Execution Orchestration              |
+|              Layer 4: Scheduling Policy (RT Theory)           |
 |                                                               |
 |  +------------------+  +------------------+  +--------------+ |
-|  | ExecutionGraph   |  | Executor         |  | Dependency   | |
-|  | (Immutable DAG)  |  | (Stateless)      |  | Tracker      | |
+|  | Scheduler        |  | SchedulingPolicy |  | Admission    | |
+|  | (Orchestration)  |  | (RMS, EDF)       |  | Controller   | |
+|  +------------------+  +------------------+  +--------------+ |
+|  +------------------+  +------------------+                   |
+|  | WCETProfiler     |  | StreamPool       |                   |
+|  | (Profiling)      |  | (Fixed Pool)     |                   |
+|  +------------------+  +------------------+                   |
++---------------------------------------------------------------+
+                              |
+                              v
++---------------------------------------------------------------+
+|           Layer 3: Cross-Model Memory Orchestration           |
+|                                                               |
+|  +------------------+  +------------------+  +--------------+ |
+|  | MemoryOrchestrator| | LifetimeAnalyser |  | Pressure     | |
+|  | (Cross-Model)    |  | (Sharing)        |  | Handler      | |
 |  +------------------+  +------------------+  +--------------+ |
 +---------------------------------------------------------------+
                               |
                               v
 +---------------------------------------------------------------+
-|                   Layer 2: Memory Management                  |
+|             Layer 2: Execution Context Isolation              |
 |                                                               |
 |  +------------------+  +------------------+  +--------------+ |
-|  | MemoryPlanner    |  | LifetimeAnalyser |  | DeviceBuffer | |
-|  | (Static Plan)    |  | (Liveness)       |  | (RAII)       | |
+|  | ExecutionContext  |  | ResourceBudget   |  | Runtime      | |
+|  | (Per-Model)      |  | (Hard Limits)    |  | Backend      | |
 |  +------------------+  +------------------+  +--------------+ |
 +---------------------------------------------------------------+
                               |
@@ -126,7 +199,17 @@ AegisRT is a layered edge AI runtime architecture designed for deterministic, ex
 |  | CudaContext      |  | CudaStream       |  | CudaEvent    | |
 |  | (Device Init)    |  | (RAII Wrapper)   |  | (RAII)       | |
 |  +------------------+  +------------------+  +--------------+ |
+|  +------------------+  +------------------+                   |
+|  | DeviceMemoryPool |  | DeviceBuffer     |                   |
+|  | (Allocation)     |  | (RAII Wrapper)   |                   |
+|  +------------------+  +------------------+                   |
 +---------------------------------------------------------------+
+                              |
+                              v
+              +-------------------------------+
+              | Existing Runtimes             |
+              | (TensorRT, TVM RT, ONNX RT)   |
+              +-------------------------------+
                               |
                               v
                     +---------------------+
@@ -138,43 +221,55 @@ AegisRT is a layered edge AI runtime architecture designed for deterministic, ex
 
 ## Data Flow
 
-### Model Input to Execution Output
+### Model Registration to Execution
 
 ```
-1. Model File (ONNX, Custom IR)
+1. Pre-Compiled Model (TensorRT engine, TVM module, etc.)
         |
         v
-2. ModelLoader
+2. RuntimeBackend wraps model (opaque execution handle)
         |
         v
-3. ExecutionGraph (Immutable DAG)
+3. ExecutionContext created (resource budget, fault boundary)
         |
         v
-4. LifetimeAnalyser
+4. WCETProfiler profiles model (execution time distribution)
         |
         v
-5. MemoryPlanner (Static Allocation Plan)
+5. AdmissionController checks schedulability (can this model be added?)
         |
         v
-6. Scheduler (Submission Queue)
+6. MemoryOrchestrator plans cross-model memory allocation
         |
         v
-7. StreamPool (Allocate Stream)
-        |
-        v
-8. Executor (Kernel Invocation)
-        |
-        v
-9. DependencyTracker (Event Synchronisation)
-        |
-        v
-10. Output Tensors (Device Memory)
-        |
-        v
-11. Host Memory (cudaMemcpy)
+7. Scheduler admits model to scheduling pool
 ```
 
-**Key Observation:** Steps 1-5 occur once (graph construction). Steps 6-11 occur per invocation (execution).
+### Per-Invocation Execution
+
+```
+1. Execution request arrives (model ID, priority, deadline)
+        |
+        v
+2. Scheduler selects next request (policy-driven: RMS, EDF)
+        |
+        v
+3. StreamPool allocates stream within context budget
+        |
+        v
+4. MemoryOrchestrator binds memory within context budget
+        |
+        v
+5. RuntimeBackend executes model on allocated resources
+        |
+        v
+6. TraceCollector records execution events
+        |
+        v
+7. Completion callback invoked, stream released
+```
+
+**Key Observation:** Model registration (expensive, once) is separated from per-invocation execution (cheap, repeated). Admission control ensures that once a model is admitted, its latency guarantees are maintained.
 
 ---
 
@@ -183,78 +278,87 @@ AegisRT is a layered edge AI runtime architecture designed for deterministic, ex
 ### Submission to Completion
 
 ```
-1. User submits ExecutionRequest (graph, priority, deadline)
+1. User submits ExecutionRequest (model ID, priority, deadline)
         |
         v
-2. Scheduler enqueues request (bounded queue)
+2. Scheduler enqueues request (bounded queue, per-context)
         |
         v
-3. OrchestrationLoop dequeues request (policy-driven)
+3. OrchestrationLoop dequeues request (RT policy-driven)
         |
         v
-4. SchedulingPolicy selects next request (FIFO, Priority)
+4. SchedulingPolicy selects next request (RMS, EDF, Priority)
         |
         v
-5. StreamPool allocates stream
+5. AdmissionController verifies schedulability (if new model)
         |
         v
-6. MemoryPlanner binds tensors to memory offsets
+6. StreamPool allocates stream within context budget
         |
         v
-7. Executor executes graph on stream
+7. MemoryOrchestrator binds memory within context budget
         |
         v
-8. DependencyTracker inserts/waits events
+8. RuntimeBackend executes model on allocated resources
         |
         v
-9. Completion callback invoked
+9. TraceCollector records events (scheduling decision, execution, memory)
         |
         v
-10. StreamPool releases stream
+10. Completion callback invoked
+        |
+        v
+11. StreamPool releases stream, context budget updated
 ```
 
-**Key Observation:** Scheduling decisions (steps 3-4) are decoupled from execution mechanics (steps 7-8).
+**Key Observation:** Scheduling decisions (steps 3-5) are decoupled from execution mechanics (step 8). The RuntimeBackend is opaque -- AegisRT controls resources, not execution internals.
 
 ---
 
 ## Key Abstractions
 
-### ExecutionGraph
+### ExecutionContext
 
-**Purpose:** Immutable DAG representation of computation.
+**Purpose:** Per-model resource container with hard budgets and fault isolation.
 
 **Interface:**
 ```cpp
-class ExecutionGraph {
+class ExecutionContext {
 public:
-    const std::vector<OperatorNode>& operators() const;
-    const std::vector<TensorEdge>& tensors() const;
-    const std::vector<size_t>& topologicalOrder() const;
-    size_t memoryBudget() const;
+    ExecutionContext(ResourceBudget budget,
+                    std::unique_ptr<RuntimeBackend> backend);
+
+    const ResourceBudget& budget() const;
+    RuntimeBackend& backend();
+    bool withinBudget(size_t memoryRequest, size_t streamRequest) const;
 };
 ```
 
 **Invariants:**
-- Constructed once, executed many times
-- No runtime mutation
-- Topological order is deterministic
+- Each model has exactly one context
+- Resource budgets are immutable after creation
+- Faults are scoped to the originating context
 
 ---
 
 ### Scheduler
 
-**Purpose:** Central orchestration component.
+**Purpose:** Central orchestration component with RT scheduling and admission control.
 
 **Interface:**
 ```cpp
 class Scheduler {
 public:
     Scheduler(std::unique_ptr<SchedulingPolicy> policy,
-              std::unique_ptr<StreamPool> streams);
+              std::unique_ptr<StreamPool> streams,
+              std::unique_ptr<AdmissionController> admission);
 
-    RequestID submit(const ExecutionGraph& graph,
-                     Priority priority,
-                     Deadline deadline);
+    Result<ModelID> admit(std::unique_ptr<ExecutionContext> context,
+                          WCETProfile profile,
+                          Deadline deadline);
+
+    RequestID submit(ModelID model,
+                     Priority priority);
 
     void start();  // Start orchestration loop
     void stop();   // Stop orchestration loop
@@ -262,71 +366,82 @@ public:
 ```
 
 **Invariants:**
+- Admission control runs schedulability analysis before accepting
 - Policy is injected (not hardcoded)
 - Submission is non-blocking
 - Orchestration loop runs on dedicated thread
 
 ---
 
-### MemoryPlanner
+### MemoryOrchestrator
 
-**Purpose:** Compute static memory allocation plan.
+**Purpose:** Cross-model memory coordination with lifetime-aware sharing.
 
 **Interface:**
 ```cpp
-class MemoryPlanner {
+class MemoryOrchestrator {
 public:
-    AllocationPlan plan(const ExecutionGraph& graph);
+    AllocationPlan plan(const std::vector<ExecutionContext*>& contexts);
+    Result<MemoryBinding> bind(ModelID model, const AllocationPlan& plan);
+    void handlePressure(PressurePolicy policy);
 };
 
 struct AllocationPlan {
-    std::unordered_map<TensorID, size_t> offsets;
+    std::unordered_map<ModelID, std::vector<MemoryRegion>> allocations;
+    std::vector<SharingOpportunity> sharing;
     size_t peakMemory;
 };
 ```
 
 **Invariants:**
-- Planning occurs at graph construction (not execution)
-- Plan is deterministic (same graph produces same plan)
+- Planning occurs at admission time (not execution time)
+- Plan is deterministic (same inputs produce same plan)
 - Peak memory is statically computable
+- Sharing opportunities are identified and exploited automatically
 
 ---
 
 ## Dependency Graph
 
 ```
-ModelLoader
+TraceCollector, MetricsAggregator, AuditTrail  (Layer 5 - cross-cutting)
+    |
+    v (observes all layers)
+
+Scheduler
+    |
+    +---> SchedulingPolicy (RMS, EDF, Priority)
+    |
+    +---> AdmissionController
+    |           |
+    |           +---> WCETProfiler
+    |
+    +---> StreamPool
     |
     v
-ExecutionGraph
+MemoryOrchestrator
     |
     +---> LifetimeAnalyser
-    |           |
-    |           v
-    |     MemoryPlanner
-    |           |
-    +-----------|
-                |
-                v
-            Scheduler
-                |
-                +---> SchedulingPolicy
-                |
-                +---> StreamPool
-                |
-                v
-            Executor
-                |
-                +---> DependencyTracker
-                |
-                v
-            CudaStream, CudaEvent
-                |
-                v
-            CUDA Runtime API
+    |
+    +---> PressureHandler
+    |
+    v
+ExecutionContext
+    |
+    +---> ResourceBudget
+    |
+    +---> RuntimeBackend (TensorRT, TVM, ONNX RT)
+    |
+    +---> FaultBoundary
+    |
+    v
+CudaContext, CudaStream, CudaEvent, DeviceMemoryPool
+    |
+    v
+CUDA Runtime API
 ```
 
-**Key Observation:** Dependencies flow downward. No layer depends on layers above.
+**Key Observation:** Dependencies flow downward. No layer depends on layers above. Existing runtimes are wrapped as opaque backends at Layer 2.
 
 ---
 
@@ -401,18 +516,20 @@ Result<RequestID> Scheduler::submit(const ExecutionGraph& graph) {
 ### Tracing Points
 
 **Scheduling Decisions:**
-- Request submission (ID, priority, deadline)
-- Policy selection (which request chosen, why)
-- Stream allocation (which stream assigned)
+- Model admission (model ID, WCET profile, schedulability result)
+- Request submission (request ID, model ID, priority, deadline)
+- Policy selection (which request chosen, why, alternative considered)
+- Stream allocation (which stream assigned, within which context)
 
 **Execution Events:**
-- Kernel launch (operator ID, stream ID, timestamp)
-- Event record/wait (tensor ID, event ID, timestamp)
-- Completion (request ID, latency, timestamp)
+- RuntimeBackend invocation (model ID, stream ID, timestamp)
+- Completion (request ID, actual latency vs deadline, timestamp)
+- Deadline miss (request ID, expected vs actual, severity)
 
 **Memory Events:**
-- Allocation (tensor ID, size, offset, timestamp)
-- Deallocation (tensor ID, timestamp)
+- Context allocation (model ID, budget, actual usage)
+- Cross-model sharing (which models share, memory saved)
+- Pressure event (trigger, policy applied, models affected)
 
 ### Trace Format
 
@@ -436,25 +553,35 @@ Structured logs (JSON) suitable for offline analysis:
 
 ### Time Complexity
 
-**Graph Construction:** O(n log n) where n = number of operators (topological sort)
+**Model Admission:** O(n) where n = number of admitted models (schedulability analysis)
 
-**Memory Planning:** O(n^2) where n = number of tensors (bin-packing)
+**Memory Planning:** O(n * m) where n = models, m = memory regions (cross-model sharing)
 
-**Execution:** O(n) where n = number of operators (sequential kernel launches)
+**Per-Invocation Scheduling:** O(log n) where n = queue depth (priority queue / EDF)
 
-**Scheduling:** O(log n) where n = queue depth (priority queue)
+**Execution Dispatch:** O(1) (delegate to RuntimeBackend)
 
 ### Space Complexity
 
-**Graph Representation:** O(n + m) where n = operators, m = tensors
+**Per-Model State:** O(1) (execution context, WCET profile, resource budget)
 
-**Memory Plan:** O(n) where n = number of tensors
+**Memory Plan:** O(n * m) where n = models, m = memory regions
 
-**Execution State:** O(1) (stateless executor)
+**Scheduling State:** O(n) where n = admitted models (WCET profiles, deadlines)
+
+**Trace Buffer:** O(k) where k = configurable trace buffer size
 
 ---
 
 ## Design Trade-offs
+
+### Orchestration vs Execution
+
+**Choice:** Orchestrate existing runtimes rather than implementing kernel execution.
+
+**Trade-off:** Cannot optimise kernel-level execution, but avoids competing with mature runtimes.
+
+**Rationale:** TensorRT, TVM, and ONNX Runtime are excellent at kernel execution. The unsolved problem is multi-model orchestration under resource constraints. Focus on the gap, not the solved problem.
 
 ### Static vs Dynamic Graphs
 

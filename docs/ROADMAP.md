@@ -2,9 +2,9 @@
 
 ## Purpose and Scope
 
-This roadmap defines the sequential development path for AegisRT from foundational substrate to demonstrable reference architecture. Each phase builds upon the previous, with mandatory exit criteria preventing premature advancement.
+This roadmap defines the sequential development path for AegisRT from foundational substrate to a working GPU resource orchestrator with deterministic scheduling guarantees. Each phase builds upon the previous, with mandatory exit criteria preventing premature advancement.
 
-**Roadmap Objective:** Transform architectural vision (OUTLOOK.md) into working system through disciplined, incremental construction.
+**Roadmap Objective:** Transform architectural vision (OUTLOOK.md) into a working GPU orchestration layer that provides deterministic multi-model scheduling, cross-model memory management, execution context isolation, and full observability.
 
 **Roadmap Constraint:** Phases execute sequentially. No phase begins until predecessor's exit criteria are satisfied.
 
@@ -37,25 +37,25 @@ Early phases establish simple, correct implementations. Later phases introduce o
 ## Phase Dependency Graph
 
 ```
-Phase 0: Foundations
+Phase 0: Foundations (Layer 1)
     |
-    | (Establishes: CUDA context, streams, memory pool)
+    | (Establishes: CUDA abstraction, memory pool, build system)
     v
-Phase 1: Graph & Memory Semantics
+Phase 1: Execution Context Isolation (Layer 2)
     |
-    | (Establishes: Static DAG, tensor lifetimes, memory reuse)
+    | (Establishes: Per-model contexts, resource budgets, runtime backends)
     v
-Phase 2: Scheduler v1
+Phase 2: Cross-Model Memory Orchestration (Layer 3)
     |
-    | (Establishes: Multi-model submission, scheduling policy)
+    | (Establishes: Lifetime analysis, memory sharing, pressure handling)
     v
-Phase 3: Advanced Runtime Control
+Phase 3: Deterministic Scheduler (Layer 4 - Core Differentiator)
     |
-    | (Establishes: CUDA Graphs, preemption, memory pressure handling)
+    | (Establishes: RT scheduling, WCET profiling, admission control)
     v
-Phase 4: Documentation & Expression
+Phase 4: Observability & Validation (Layer 5)
     |
-    | (Establishes: Architecture diagrams, design rationale, case studies)
+    | (Establishes: Tracing, metrics, audit trail, performance case studies)
     v
 Roadmap Complete
 ```
@@ -66,113 +66,124 @@ Roadmap Complete
 
 ## Phase Summaries
 
-### Phase 0: Foundations
+### Phase 0: Foundations (Layer 1: CUDA Runtime Abstraction)
 
-**Intent:** Establish minimal execution substrate capable of running a single model end-to-end without framework dependencies.
+**Intent:** Establish minimal CUDA abstraction substrate with RAII wrappers, memory pool, and build system.
 
 **Key Deliverables:**
 - Repository scaffolding (CMake, directory structure, CI configuration)
 - CUDA context and stream abstraction with RAII wrappers
+- CUDA event abstraction with RAII wrappers
 - Device memory pool with explicit allocation/deallocation
-- Single-model execution path (load graph, allocate memory, execute, retrieve results)
+- CUDA_CHECK error macro for all API calls
+- Basic device capability discovery
 
 **Exit Criteria:**
-- Single pre-lowered model executes successfully on target device
 - All CUDA resources managed via RAII (no raw handles in application code)
+- Memory pool allocates and deallocates without leaks (verified by cuda-memcheck)
 - Build system supports cross-compilation for Jetson Orin
-- Zero framework dependencies at runtime (PyTorch/TensorFlow only for graph export)
+- All CUDA API calls checked for errors
+- Unit tests with >= 70% coverage for Layer 1 components
 
-**Architectural Significance:** Establishes resource ownership model and CUDA abstraction layer. All subsequent phases build on these primitives.
+**Architectural Significance:** Establishes resource ownership model and CUDA abstraction layer. All subsequent layers build on these primitives.
 
-**Detailed Specification:** See `docs/roadmap/phase-0-foundations.md`
-
----
-
-### Phase 1: Graph & Memory Semantics
-
-**Intent:** Make execution explicit by introducing static DAG representation and deterministic memory management.
-
-**Key Deliverables:**
-- Static execution graph (DAG) with explicit operator dependencies
-- Tensor lifetime analysis and memory reuse strategy
-- Event-based dependency tracking for asynchronous execution
-- Memory allocation plan computed at graph construction time
-
-**Exit Criteria:**
-- Execution order is deterministic and traceable
-- Peak memory usage reduced compared to naive allocation (measurable via profiling)
-- Memory allocations occur only during graph construction, not during execution
-- Execution traces include complete dependency information
-
-**Architectural Significance:** Separates graph construction (expensive, one-time) from execution (cheap, repeated). Enables static analysis and optimisation.
-
-**Detailed Specification:** See `docs/roadmap/phase-1-graph-memory.md`
+**Learning Focus:** Modern C++20, CUDA programming, RAII patterns, CMake
 
 ---
 
-### Phase 2: Scheduler v1
+### Phase 1: Execution Context Isolation (Layer 2)
 
-**Intent:** Introduce scheduling policy as first-class abstraction, enabling multi-model execution with explicit resource arbitration.
+**Intent:** Provide per-model execution contexts with hard resource budgets, fault isolation, and runtime backend abstraction.
 
 **Key Deliverables:**
-- Multi-model submission interface (queue-based API)
-- FIFO and priority-based scheduling policies
-- Stream allocation strategy (fixed pool vs dynamic assignment)
-- CPU-side orchestration loop with explicit scheduling decisions
+- `ExecutionContext` with per-model resource ownership
+- `ResourceBudget` with hard limits on memory and streams
+- `FaultBoundary` for per-context error isolation
+- `RuntimeBackend` abstract interface for wrapping existing runtimes
+- At least one concrete backend (TensorRT or mock backend for testing)
 
 **Exit Criteria:**
-- Two models execute concurrently without resource conflicts
-- Scheduling decisions are traceable (logs show why each decision was made)
-- Latency impact of concurrent execution is measurable and explainable
-- Scheduler interface is policy-agnostic (policy is injected, not hardcoded)
+- Two models execute in isolated contexts without resource interference
+- Resource budget violations trigger explicit rejection (not silent degradation)
+- One model's CUDA error does not crash the other model's context
+- Runtime backend interface is clean enough to add new backends without modifying core
+- Unit tests with >= 70% coverage for Layer 2 components
 
-**Architectural Significance:** Elevates scheduler from utility to central orchestration component. Establishes separation between policy (scheduler) and mechanism (executor).
+**Architectural Significance:** Establishes the orchestration model -- AegisRT manages contexts, not kernels. This is where cuAdapter experience directly applies.
 
-**Detailed Specification:** See `docs/roadmap/phase-2-scheduler-v1.md`
+**Learning Focus:** OS concepts (process isolation, resource limits), CUDA MPS, interface design
 
 ---
 
-### Phase 3: Advanced Runtime Control
+### Phase 2: Cross-Model Memory Orchestration (Layer 3)
 
-**Intent:** Explore deeper runtime techniques for reducing overhead and handling resource pressure.
+**Intent:** Manage device memory across multiple models with lifetime-aware sharing and explicit pressure handling.
 
 **Key Deliverables:**
-- CUDA Graph integration for reduced launch overhead
-- Soft preemption points for long-running kernels
-- Memory pressure handling (graceful degradation, explicit rejection)
-- Detailed profiling hooks (kernel timing, memory events, scheduling decisions)
+- `MemoryOrchestrator` for cross-model memory coordination
+- `LifetimeAnalyser` for computing tensor lifetimes and sharing opportunities
+- `MemoryPlanner` for static cross-model allocation plans
+- `PressureHandler` with explicit policies (shed, reject, compact)
+- Memory sharing between non-overlapping execution windows
 
 **Exit Criteria:**
-- Launch overhead reduced by measurable factor (compare CUDA Graph vs stream-based execution)
-- System remains stable under memory pressure (no crashes, predictable failure modes)
-- Profiling data sufficient for offline analysis (can reconstruct full execution timeline)
-- Preemption points enable bounded worst-case latency for high-priority models
+- Peak memory usage reduced compared to per-model isolation (measurable)
+- Memory sharing correctly identified and exploited between non-overlapping models
+- Pressure handling follows explicit policy (no hidden heuristics)
+- All memory allocations occur during planning, not during execution
+- Unit tests with >= 70% coverage for Layer 3 components
 
-**Architectural Significance:** Demonstrates advanced CUDA techniques without compromising architectural clarity. Validates that abstractions support optimisation.
+**Architectural Significance:** Demonstrates that cross-model orchestration provides measurable value over isolated execution. This is a key differentiator.
 
-**Detailed Specification:** See `docs/roadmap/phase-3-advanced-runtime.md`
+**Learning Focus:** Memory allocation algorithms, graph theory, bin-packing, lifetime analysis
 
 ---
 
-### Phase 4: Documentation & Expression
+### Phase 3: Deterministic Scheduler (Layer 4 - Core Differentiator)
 
-**Intent:** Transform engineering artifacts into communication artifacts suitable for technical presentation and discussion.
+**Intent:** Implement real-time scheduling algorithms adapted for non-preemptive GPU execution, with WCET profiling and formal admission control.
 
 **Key Deliverables:**
-- Architecture diagrams (component relationships, data flow, control flow)
-- Design rationale documents (why decisions were made, alternatives rejected)
-- Performance case studies (latency analysis, memory profiling, scheduling trade-offs)
-- Public-facing README with clear project positioning
+- `WCETProfiler` for worst-case execution time estimation per model
+- `AdmissionController` with schedulability analysis
+- `SchedulingPolicy` implementations: FIFO baseline, Rate-Monotonic (RMS), Earliest Deadline First (EDF)
+- Non-preemptive scheduling analysis (adapted for GPU constraints)
+- Deadline miss detection and reporting
 
 **Exit Criteria:**
-- Architecture understandable by senior engineer in < 2 hours (informal review)
-- Design rationale documents answer "why" questions without requiring code inspection
-- Performance case studies demonstrate determinism and explainability claims
-- README clearly communicates what AegisRT is, is not, and why it exists
+- WCET bounds are conservative and validated (actual execution never exceeds bound)
+- Admission control correctly rejects models that would violate existing guarantees
+- EDF admits more models than FIFO with same guarantee level (measurable)
+- Latency distributions are unimodal with < 5% coefficient of variation
+- Scheduling decisions are fully traceable (can reconstruct why each decision was made)
+- Unit tests with >= 80% coverage for Layer 4 components (critical path)
 
-**Architectural Significance:** Validates that architecture is presentable and defensible. Ensures project achieves clarity objective.
+**Architectural Significance:** This is the core research contribution. Adapting RT scheduling theory to non-preemptive GPU execution is genuinely novel. This is what makes AegisRT not "just another runtime."
 
-**Detailed Specification:** See `docs/roadmap/phase-4-documentation.md`
+**Learning Focus:** Real-time scheduling theory (Liu & Layland, EDF), WCET analysis, formal methods, GPU scheduling research (REEF, Clockwork, Orion)
+
+---
+
+### Phase 4: Observability & Validation (Layer 5)
+
+**Intent:** Provide full traceability, validate determinism claims with real workloads, and produce performance case studies.
+
+**Key Deliverables:**
+- `TraceCollector` with structured event collection
+- `MetricsAggregator` with per-model resource utilisation
+- `AuditTrail` with scheduling decision rationale
+- Integration with Perfetto or NVIDIA Nsight
+- Performance case studies on Jetson Orin (5+ models, latency analysis)
+- Architecture documentation and design rationale
+
+**Exit Criteria:**
+- Every scheduling decision reconstructible from traces
+- Performance case studies demonstrate determinism claims (< 5% CV)
+- Architecture understandable by senior engineer in < 2 hours
+- System runs 5+ models concurrently on Orin with bounded latency
+- Public-facing documentation clearly communicates what AegisRT is and why
+
+**Architectural Significance:** Validates that the system delivers on its promises. Without observability, determinism cannot be verified.
 
 ---
 
@@ -192,9 +203,9 @@ All CUDA resources (streams, events, device memory) managed via RAII wrappers. N
 
 All CUDA API calls checked for errors. No silent failures. Errors propagated with sufficient context for diagnosis.
 
-### C4: No Framework Coupling
+### C4: No Kernel Implementation
 
-PyTorch, TensorFlow, ONNX Runtime are build-time dependencies only. No runtime coupling.
+AegisRT orchestrates existing runtimes. It does not implement kernel execution, operator fusion, or model compilation. Kernel execution is delegated to runtime backends (TensorRT, TVM, ONNX Runtime).
 
 ### C5: Deterministic Execution
 
@@ -206,7 +217,7 @@ All scheduling decisions, memory allocations, and kernel launches are traceable 
 
 ### C7: Testing Requirements
 
-Minimum 70% line coverage. Critical paths (scheduling, memory management) require 90%+ coverage.
+Minimum 70% line coverage. Critical paths (scheduling, memory management) require 80%+ coverage.
 
 ### C8: Static Analysis
 
@@ -219,11 +230,13 @@ All code passes clang-tidy and cppcheck with project configuration. No compiler 
 The roadmap is complete when ALL of the following are satisfied:
 
 1. **Functional Completeness:** All phase exit criteria met and verified
-2. **Architectural Integrity:** System demonstrates clean separation of concerns (scheduler, executor, memory manager are independently testable)
-3. **Determinism Validation:** Latency distributions are unimodal with < 5% coefficient of variation
-4. **Explainability Validation:** Scheduling decisions are traceable and reconstructible from logs
-5. **Documentation Completeness:** Architecture understandable without code inspection
-6. **Demonstrability:** System can be presented in 30-minute technical talk without apology
+2. **Architectural Integrity:** System demonstrates clean 5-layer separation (CUDA abstraction, context isolation, memory orchestration, scheduling, observability are independently testable)
+3. **Determinism Validation:** Latency distributions are unimodal with < 5% coefficient of variation under multi-model workloads
+4. **Scheduling Guarantees:** Admission control correctly prevents deadline violations; schedulability analysis is provably correct
+5. **Explainability Validation:** Scheduling decisions are traceable and reconstructible from logs
+6. **Orchestration Value:** Cross-model memory sharing and deterministic scheduling provide measurable improvement over naive per-model execution
+7. **Documentation Completeness:** Architecture understandable without code inspection
+8. **Demonstrability:** System can be presented in 30-minute technical talk without apology
 
 **Verification Approach:** Conduct formal review with checklist. Each criterion requires explicit evidence (test results, profiling data, peer review feedback).
 
@@ -263,5 +276,5 @@ For agent-driven work:
 - **Agent Constraints:** `CLAUDE.md`
 - **Contribution Standards:** `CONTRIBUTING.md`
 - **Phase Details:** `docs/roadmap/phase-{0,1,2,3,4}-*.md`
-- **System Architecture:** `docs/ARCHITECTURE.md` (created in Phase 0)
-- **Terminology:** `docs/TERMINOLOGY.md` (created in Phase 0)
+- **System Architecture:** `docs/ARCHITECTURE.md`
+- **Terminology:** `docs/TERMINOLOGY.md`

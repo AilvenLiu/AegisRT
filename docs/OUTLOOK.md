@@ -1,33 +1,55 @@
 ## 1. Vision
 
-AegisRT is envisioned as a **reference‑quality edge AI runtime architecture**, comparable in conceptual weight (but not scale) to projects such as:
+AegisRT is a **GPU resource orchestrator for deterministic edge AI execution**. It sits *above* existing inference runtimes (TensorRT, TVM Runtime, ONNX Runtime) and manages the resources they compete for: CUDA streams, device memory, compute time, and scheduling priority.
 
-- TensorRT Runtime (kernel‑centric)
-- TVM Runtime (compiler‑centric)
-- CUDA Graphs (launch‑centric)
+The problem AegisRT solves is not "how to run a single model" -- that is well-served by existing runtimes. The problem is: **how do you run 20+ models concurrently on a single 8 GB edge GPU with deterministic latency guarantees?**
 
-but from a *system‑oriented* angle.
+No open-source project provides this today.
 
-The long‑term vision is **not adoption**, but **clarity**:
+AegisRT draws on:
 
-- Clarity of how GPU execution *should* be managed under strict resource constraints
-- Clarity of scheduling trade‑offs between latency, throughput, and isolation
-- Clarity of memory lifetime semantics in multi‑model inference
+- Real-time scheduling theory (Rate-Monotonic, EDF) adapted for non-preemptive GPU execution
+- Explicit resource ownership and RAII for all GPU resources
+- Formal admission control and schedulability analysis
+- Cross-model memory orchestration with lifetime-aware sharing
+
+```
+Application (Autonomous Driving Pipeline, Robotics, etc.)
+         |
+    +----v-----------+
+    |    AegisRT      |  <-- GPU Resource Orchestrator
+    |  - Scheduling   |
+    |  - Memory Mgmt  |
+    |  - Isolation     |
+    |  - Observability |
+    +----+----+-------+
+         |    |
+    +----v-+  +v--------+
+    | TRT  |  | TVM RT  |  <-- Existing runtimes (not replaced)
+    +------+  +---------+
+         |        |
+    +----v--------v----+
+    |   CUDA Runtime   |
+    +------------------+
+```
 
 This makes AegisRT valuable as:
 
-- A personal flagship project
-- A discussion artifact with senior infra / compiler engineers
-- A demonstrable proof of deep system thinking
+- A personal flagship project demonstrating deep systems thinking
+- A genuinely useful tool for edge AI engineers running multi-model workloads
+- A vehicle for systematic learning in GPU systems, real-time scheduling, and memory management
+- A discussion artifact with senior infra, compiler, and systems engineers
 
 ---
 
 ## 2. What AegisRT Explicitly Is
 
-- A **single‑node** AI execution runtime
-- Targeting **edge GPUs / SoCs**
-- Focused on **inference**, not training
+- A **GPU resource orchestrator** for multi-model edge AI inference
+- A scheduling and memory management layer that sits **above** existing runtimes
+- Targeting **edge GPUs / SoCs** (Jetson Orin, similar constrained devices)
+- Focused on **deterministic, bounded-latency inference** under resource constraints
 - Implemented primarily in **C++ / CUDA**
+- Grounded in **real-time scheduling theory** adapted for GPU execution
 - Designed around **explicit control**, not heuristics hidden in frameworks
 
 ---
@@ -36,11 +58,12 @@ This makes AegisRT valuable as:
 
 - *Not* a full ML framework
 - *Not* a PyTorch replacement
-- *Not* a compiler (it consumes pre‑lowered graphs)
-- *Not* a production‑ready SDK
-- *Not* a benchmark‑only toy
+- *Not* a compiler (it consumes pre-lowered graphs from TVM, TensorRT, etc.)
+- *Not* a replacement for TensorRT, TVM Runtime, or ONNX Runtime
+- *Not* a kernel library (it delegates kernel execution to existing runtimes)
+- *Not* a benchmark-only toy
 
-AegisRT intentionally lives **between** frameworks and kernels.
+AegisRT intentionally lives **above** runtimes and **below** applications. It orchestrates, it does not execute.
 
 ---
 
@@ -62,17 +85,27 @@ No hidden global allocators, no implicit streams. Every resource has an owner, l
 
 **Code Manifestation:** All CUDA resources are managed via `std::unique_ptr` with custom deleters or dedicated RAII wrappers. Lifetimes are statically analysable. No global state beyond the CUDA runtime itself.
 
-### 4.3 Scheduler as a First‑Class Citizen
+### 4.3 Scheduler as a First-Class Citizen (Grounded in Real-Time Theory)
 
-Scheduling policy is not a side effect of execution—it *is* the execution model.
+Scheduling policy is not a side effect of execution -- it *is* the execution model. AegisRT adapts classical real-time scheduling theory (Rate-Monotonic, Earliest Deadline First) for the unique constraints of GPU execution.
 
-**Architectural Implication:** The scheduler is not a utility layer—it is the central orchestration component. Execution graphs are submitted to the scheduler, not executed directly. Policy (FIFO, priority, fairness) is explicit and swappable.
+**The GPU Scheduling Challenge:** Traditional RT scheduling assumes preemptible tasks with known worst-case execution times (WCET) on a sequential processor. GPUs violate all three assumptions: kernels are non-preemptible, WCET varies with contention, and the processor is massively parallel with shared resources. Adapting RT theory to this domain is the core research contribution.
 
-**Code Manifestation:** Scheduler interface accepts execution graphs and returns scheduling decisions. Execution engine consumes scheduler output. Policy is injected, not hardcoded.
+**Architectural Implication:** The scheduler is the central orchestration component. It performs admission control (can this model be added without violating existing guarantees?), computes schedulability (can all admitted models meet their deadlines?), and makes per-invocation scheduling decisions. Policy (RMS, EDF, priority) is explicit and swappable.
 
-### 4.4 Hardware Awareness Without Hardware Lock‑In
+**Code Manifestation:** Scheduler interface accepts execution requests with deadlines and priorities. WCET profiles are maintained per model. Admission control runs schedulability analysis before accepting new workloads. All decisions are logged with rationale.
 
-The system exposes Orin‑specific properties (SM count, memory limits), but avoids baking assumptions that prevent portability.
+### 4.4 Execution Context Isolation
+
+Each model executes within an isolated context with hard resource budgets. One model's failure (OOM, timeout, CUDA error) does not propagate to others.
+
+**Architectural Implication:** Per-model execution contexts own their stream allocation, memory budget, and fault boundary. Resource budgets are hard limits, not hints. Exceeding a budget triggers explicit rejection, not silent degradation.
+
+**Code Manifestation:** `ExecutionContext` objects encapsulate per-model resource ownership. Stream pools are partitioned. Memory budgets are enforced at allocation time. Fault isolation is achieved through context-scoped error handling.
+
+### 4.5 Hardware Awareness Without Hardware Lock-In
+
+The system exposes Orin-specific properties (SM count, memory limits, thermal state), but avoids baking assumptions that prevent portability.
 
 **Architectural Implication:** Hardware capabilities are queried at runtime and exposed as configuration parameters. Algorithms adapt to available resources rather than assuming fixed hardware profiles.
 
@@ -82,9 +115,10 @@ The system exposes Orin‑specific properties (SM count, memory limits), but avo
 
 ## 5. Intended Audience
 
-- AI Infra engineers
-- Runtime / compiler engineers
-- Systems engineers working on edge AI
+- Edge AI engineers running multi-model workloads on constrained GPUs
+- AI Infra engineers building deployment pipelines for autonomous driving, robotics, or similar domains
+- Runtime / compiler engineers interested in GPU scheduling theory
+- Systems engineers working on real-time GPU execution
 - Myself, six months from now, explaining my thinking to others
 
 ---
@@ -93,15 +127,15 @@ The system exposes Orin‑specific properties (SM count, memory limits), but avo
 
 AegisRT's architecture is governed by separation of concerns across three primary domains:
 
-### 6.1 Graph Representation vs Execution vs Scheduling
+### 6.1 Orchestration vs Execution vs Scheduling
 
-**Graph Representation:** Static, immutable DAG of operators with explicit data dependencies. Constructed once, executed many times. No runtime graph mutation.
+**Orchestration:** AegisRT's primary role. Manages resource allocation, context isolation, and cross-model coordination. Delegates actual kernel execution to existing runtimes.
 
-**Execution:** Stateless kernel invocation layer. Accepts a graph, device context, and memory bindings. Produces execution traces. Does not make scheduling decisions.
+**Execution:** Handled by existing runtimes (TensorRT, TVM Runtime, etc.). AegisRT wraps these runtimes in execution contexts with resource budgets and fault isolation.
 
-**Scheduling:** Policy layer that decides *when* and *on which stream* to execute submitted graphs. Owns resource allocation strategy. Decoupled from execution mechanics.
+**Scheduling:** Policy layer that decides *when* and *with what resources* to execute submitted workloads. Grounded in real-time scheduling theory. Owns admission control and schedulability analysis. Decoupled from execution mechanics.
 
-**Rationale:** Separation enables independent evolution of scheduling policy without touching execution logic. Execution can be tested deterministically. Scheduling can be swapped or A/B tested.
+**Rationale:** Separation enables independent evolution of scheduling policy without touching execution logic. Existing runtimes handle kernel optimisation (their strength); AegisRT handles resource orchestration (the unsolved problem).
 
 ### 6.2 Explicit State Machines over Implicit Heuristics
 
@@ -123,19 +157,23 @@ AegisRT prefers explicit, inspectable state machines over heuristic-driven behav
 
 ```
 +---------------------------+
-| Scheduling Policy Layer   |  (FIFO, Priority, Fairness)
+| Observability Layer       |  (Tracing, metrics, audit trail)
 +---------------------------+
-| Execution Orchestration   |  (Stream management, synchronisation)
+| Scheduling Policy Layer   |  (RMS, EDF, admission control)
 +---------------------------+
-| Memory Management Layer   |  (Allocation, lifetime tracking)
+| Cross-Model Memory Orch.  |  (Lifetime analysis, sharing, pressure)
 +---------------------------+
-| CUDA Runtime Abstraction  |  (Streams, events, kernels)
+| Execution Context Isol.   |  (Per-model budgets, fault isolation)
++---------------------------+
+| CUDA Runtime Abstraction  |  (Streams, events, memory pools)
++---------------------------+
+| Existing Runtimes         |  (TensorRT, TVM RT, ONNX RT)
 +---------------------------+
 | CUDA Driver API           |
 +---------------------------+
 ```
 
-Each layer depends only on the layer below. No layer reaches across boundaries.
+Each layer depends only on the layer below. No layer reaches across boundaries. Existing runtimes are treated as opaque execution backends.
 
 ### 6.5 Observability as First-Class Constraint
 
@@ -249,11 +287,11 @@ Each layer propagates errors upward with sufficient context for diagnosis. No si
 
 **Correct Approach:** Solve the single-GPU inference problem completely. Generalise only when multiple concrete use cases demand it.
 
-### 8.5 Anti-Goal: Production Readiness
+### 8.5 Anti-Goal: Replacing Existing Runtimes
 
-**Goal:** AegisRT is a reference architecture and learning artifact, not a production SDK.
+**Goal:** AegisRT orchestrates existing runtimes, it does not replace them.
 
-**Implication:** No need for enterprise features (telemetry integration, A/B testing infrastructure, gradual rollout). Focus on clarity and correctness.
+**Implication:** No need to implement kernel execution, operator fusion, or model compilation. Focus on what existing runtimes do NOT provide: deterministic multi-model scheduling, cross-model memory orchestration, and execution context isolation.
 
 ### 8.6 Anti-Goal: Benchmark Optimisation
 
@@ -265,13 +303,13 @@ Each layer propagates errors upward with sufficient context for diagnosis. No si
 
 ## 9. System Boundaries and Interfaces
 
-### 9.1 Input Boundary: Pre-Lowered Computation Graphs
+### 9.1 Input Boundary: Execution Requests with Resource Requirements
 
-**Format:** Framework-agnostic graph representation (e.g., ONNX, serialised protobuf, or custom IR).
+**Format:** Execution requests wrapping pre-compiled models from existing runtimes (TensorRT engines, TVM compiled modules, ONNX Runtime sessions).
 
-**Assumption:** Graphs are already optimised (operator fusion, layout selection). AegisRT does not perform high-level optimisations.
+**Assumption:** Models are already compiled and optimised by their respective runtimes. AegisRT does not perform model compilation or kernel optimisation.
 
-**Contract:** Graphs are immutable after submission. No runtime mutation.
+**Contract:** Each request specifies resource requirements (memory budget, deadline, priority). AegisRT performs admission control before accepting.
 
 ### 9.2 Output Boundary: Execution Traces and Metrics
 
@@ -285,15 +323,23 @@ Each layer propagates errors upward with sufficient context for diagnosis. No si
 
 **Contract:** Tracing does not affect execution correctness, only performance.
 
-### 9.3 Hardware Boundary: CUDA Runtime API
+### 9.3 Runtime Backend Boundary: Existing Inference Runtimes
 
-**Abstraction Level:** AegisRT wraps CUDA runtime API (streams, events, memory), not driver API.
+**Abstraction Level:** AegisRT wraps existing runtimes (TensorRT, TVM Runtime, ONNX Runtime) as opaque execution backends. It manages their resource consumption, not their internal execution.
+
+**Rationale:** Existing runtimes are mature and well-optimised for kernel execution. AegisRT adds value at the orchestration layer, not the execution layer.
+
+**Contract:** Each runtime backend implements a common interface for resource estimation, execution, and status reporting. AegisRT controls when and with what resources each backend executes.
+
+### 9.4 CUDA Boundary: CUDA Runtime API
+
+**Abstraction Level:** AegisRT wraps CUDA runtime API (streams, events, memory) for resource management purposes.
 
 **Rationale:** Runtime API provides sufficient control for scheduling and memory management without low-level complexity.
 
 **Contract:** All CUDA calls are wrapped in RAII objects. No raw CUDA handles escape AegisRT interfaces.
 
-### 9.4 Scheduling Boundary: CPU Orchestration, GPU Execution
+### 9.5 Scheduling Boundary: CPU Orchestration, GPU Execution
 
 **CPU Responsibilities:** Graph submission, scheduling decisions, memory allocation, synchronisation.
 
@@ -301,7 +347,7 @@ Each layer propagates errors upward with sufficient context for diagnosis. No si
 
 **Rationale:** CPU has full system visibility and can make globally optimal decisions. GPU-side scheduling adds complexity without clear benefit for single-node inference.
 
-### 9.5 Memory Boundary: Device Memory Only
+### 9.6 Memory Boundary: Device Memory Only
 
 **Scope:** AegisRT manages device (GPU) memory only. Host (CPU) memory is caller's responsibility.
 
@@ -343,12 +389,4 @@ Each layer propagates errors upward with sufficient context for diagnosis. No si
 
 **Measurement:** Implement alternative scheduler (e.g., priority-based). Verify no changes to execution layer required.
 
----
-
-## 11. Intended Audience
-
-- AI Infra engineers
-- Runtime / compiler engineers
-- Systems engineers working on edge AI
-- Myself, six months from now, explaining my thinking to others
 
