@@ -16,13 +16,13 @@ The system decomposes into five primary layers, each with explicit responsibilit
 
 ```
 +---------------------------------------------------------------+
-|                    Application Layer                           |
+|                    Application Layer                          |
 |  (Autonomous Driving Pipeline, Robotics, Edge AI Services)    |
 +---------------------------------------------------------------+
                               |
                               v
 +---------------------------------------------------------------+
-|                    AegisRT Orchestrator                        |
+|                    AegisRT Orchestrator                       |
 |  Layer 5: Observability (tracing, metrics, audit)             |
 |  Layer 4: Scheduling Policy (RMS, EDF, admission control)     |
 |  Layer 3: Cross-Model Memory Orchestration                    |
@@ -149,7 +149,7 @@ The system decomposes into five primary layers, each with explicit responsibilit
 
 ```
 +---------------------------------------------------------------+
-|                    Layer 5: Observability                      |
+|                    Layer 5: Observability                     |
 |                                                               |
 |  +------------------+  +------------------+  +--------------+ |
 |  | TraceCollector   |  | MetricsAggregator|  | AuditTrail   | |
@@ -186,7 +186,7 @@ The system decomposes into five primary layers, each with explicit responsibilit
 |             Layer 2: Execution Context Isolation              |
 |                                                               |
 |  +------------------+  +------------------+  +--------------+ |
-|  | ExecutionContext  |  | ResourceBudget   |  | Runtime      | |
+|  | ExecutionContext |  | ResourceBudget   |  | Runtime      | |
 |  | (Per-Model)      |  | (Hard Limits)    |  | Backend      | |
 |  +------------------+  +------------------+  +--------------+ |
 +---------------------------------------------------------------+
