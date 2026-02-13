@@ -68,58 +68,58 @@ Non-ASCII characters are ONLY permitted in:
 1. **Variable names**
    ```python
    # Python - FORBIDDEN
-   café = "coffee"  # ❌ Non-ASCII in variable name
+   café = "coffee"  # Non-ASCII in variable name
 
    # Python - CORRECT
-   cafe = "coffee"  # ✅ ASCII-only variable name
+   cafe = "coffee"  # ASCII-only variable name
    ```
 
    ```cpp
    // C++ - FORBIDDEN
-   int café = 5;  // ❌ Non-ASCII in variable name
+   int café = 5;  // Non-ASCII in variable name
 
    // C++ - CORRECT
-   int cafe = 5;  // ✅ ASCII-only variable name
+   int cafe = 5;  // ASCII-only variable name
    ```
 
 2. **Function/method names**
    ```python
    # Python - FORBIDDEN
-   def calculer_café():  # ❌ Non-ASCII in function name
+   def calculer_café():  # Non-ASCII in function name
        pass
 
    # Python - CORRECT
-   def calculate_cafe():  # ✅ ASCII-only function name
+   def calculate_cafe():  # ASCII-only function name
        pass
    ```
 
 3. **Class names**
    ```python
    # Python - FORBIDDEN
-   class Café:  # ❌ Non-ASCII in class name
+   class Café:  # Non-ASCII in class name
        pass
 
    # Python - CORRECT
-   class Cafe:  # ✅ ASCII-only class name
+   class Cafe:  # ASCII-only class name
        pass
    ```
 
 4. **Module/file names**
    ```
    # FORBIDDEN
-   café.py  # ❌ Non-ASCII in filename
+   café.py  # Non-ASCII in filename
 
    # CORRECT
-   cafe.py  # ✅ ASCII-only filename
+   cafe.py  # ASCII-only filename
    ```
 
 5. **Import statements**
    ```python
    # Python - FORBIDDEN
-   from café import brew  # ❌ Non-ASCII in import
+   from café import brew  # Non-ASCII in import
 
    # Python - CORRECT
-   from cafe import brew  # ✅ ASCII-only import
+   from cafe import brew  # ASCII-only import
    ```
 
 ## 3. Checking for Violations
@@ -148,8 +148,8 @@ def is_valid_identifier(name: str) -> bool:
     return name.isascii() and name.isidentifier()
 
 # Example
-assert is_valid_identifier("cafe")  # ✅ Valid
-assert not is_valid_identifier("café")  # ❌ Invalid
+assert is_valid_identifier("cafe")  # Valid
+assert not is_valid_identifier("café")  # Invalid
 ```
 
 ### 3.3 Pre-Commit Hook
@@ -188,43 +188,43 @@ fi
 
 ```python
 # WRONG
-résumé = "document"  # ❌ Accented characters
+résumé = "document"  # Accented characters
 
 # CORRECT
-resume = "document"  # ✅ ASCII-only
+resume = "document"  # ASCII-only
 ```
 
 ### 4.2 Mathematical Symbols
 
 ```python
 # WRONG
-π = 3.14159  # ❌ Greek letter pi
-Δ = 0.001    # ❌ Greek letter delta
+π = 3.14159  # Greek letter pi
+Δ = 0.001    # Greek letter delta
 
 # CORRECT
-pi = 3.14159    # ✅ ASCII spelling
-delta = 0.001   # ✅ ASCII spelling
+pi = 3.14159    # ASCII spelling
+delta = 0.001   # ASCII spelling
 ```
 
 ### 4.3 Currency Symbols
 
 ```python
 # WRONG
-price_€ = 100  # ❌ Euro symbol
+price_€ = 100  # Euro symbol
 
 # CORRECT
-price_eur = 100  # ✅ ASCII abbreviation
+price_eur = 100  # ASCII abbreviation
 ```
 
 ### 4.4 Emoji and Special Characters
 
 ```python
 # WRONG
-def process_✓():  # ❌ Checkmark emoji
+def process_✓():  # Checkmark emoji
     pass
 
 # CORRECT
-def process_ok():  # ✅ ASCII word
+def process_ok():  # ASCII word
     pass
 ```
 

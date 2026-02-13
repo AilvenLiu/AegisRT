@@ -1,392 +1,357 @@
-## 1. Vision
+# AegisRT Outlook
 
-AegisRT is a **GPU resource orchestrator for deterministic edge AI execution**. It sits *above* existing inference runtimes (TensorRT, TVM Runtime, ONNX Runtime) and manages the resources they compete for: CUDA streams, device memory, compute time, and scheduling priority.
+## Vision Statement
 
-The problem AegisRT solves is not "how to run a single model" -- that is well-served by existing runtimes. The problem is: **how do you run 20+ models concurrently on a single 8 GB edge GPU with deterministic latency guarantees?**
+AegisRT is a **deterministic GPU orchestration framework** that brings real-time systems theory to the domain of multi-model edge AI inference. Its mission is to solve a problem that existing runtimes do not address:
 
-No open-source project provides this today.
+> **How do you run multiple neural networks concurrently on a resource-constrained GPU with provable worst-case latency guarantees?**
 
-AegisRT draws on:
+This is not a performance optimisation problem. This is a **real-time scheduling problem** with unique GPU constraints that classical theory does not address. AegisRT fills this gap.
 
-- Real-time scheduling theory (Rate-Monotonic, EDF) adapted for non-preemptive GPU execution
-- Explicit resource ownership and RAII for all GPU resources
-- Formal admission control and schedulability analysis
-- Cross-model memory orchestration with lifetime-aware sharing
+---
+
+## Why This Problem Matters
+
+### The Rise of Edge AI
+
+The AI industry is experiencing a fundamental shift from cloud-centric to edge-centric deployment. Autonomous vehicles, industrial robots, and intelligent edge services require:
+
+- **Multiple models running concurrently**: A typical autonomous driving pipeline runs 15-30 models for perception, prediction, and planning
+- **Strict latency requirements**: Perception latency directly impacts safety; 10ms can be the difference between collision and avoidance
+- **Resource constraints**: Edge devices have limited memory, compute, and thermal headroom
+- **Predictable behaviour**: Latency spikes are unacceptable in safety-critical systems
+
+### The Gap in Existing Solutions
+
+Current inference runtimes optimise for **single-model throughput**, not multi-model determinism:
+
+| Metric | What Runtimes Optimise | What Edge Systems Need |
+|--------|----------------------|----------------------|
+| Primary Goal | Throughput (inferences/second) | Worst-case latency |
+| Resource Model | Single model owns GPU | Multiple models share GPU |
+| Behaviour | Best-effort with tail latency | Deterministic with bounded latency |
+| Admission | Accept all work | Reject work that violates guarantees |
+
+**The market need is clear**: As edge AI deployment scales, the ability to guarantee latency under resource constraints becomes a competitive differentiator, not a nice-to-have.
+
+### The Academic Opportunity
+
+Real-time scheduling theory is well-established for CPU systems. GPU scheduling, however, remains an open research area:
 
 ```
-Application (Autonomous Driving Pipeline, Robotics, etc.)
-         |
-    +----v-----------+
-    |    AegisRT      |  <-- GPU Resource Orchestrator
-    |  - Scheduling   |
-    |  - Memory Mgmt  |
-    |  - Isolation     |
-    |  - Observability |
-    +----+----+-------+
-         |    |
-    +----v-+  +v--------+
-    | TRT  |  | TVM RT  |  <-- Existing runtimes (not replaced)
-    +------+  +---------+
-         |        |
-    +----v--------v----+
-    |   CUDA Runtime   |
-    +------------------+
++----------------------------------------------------+
+|                 Research Landscape                 |
++----------------------------------------------------+
+|                         |                          |
+|     CPU Scheduling      |     GPU Scheduling       |
++-------------------------+--------------------------+
+|   Mature theory         |   Open research area     |
+|   Industrial standards  |   No standard approaches |
+|   POSIX RT, AUTOSAR     |   No equivalent for GPU  |
+|   WCET tools exist      |   GPU WCET is unsolved   |
++----------------------------------------------------|
+|           AegisRT addresses this gap               |
++----------------------------------------------------+
 ```
 
-This makes AegisRT valuable as:
-
-- A personal flagship project demonstrating deep systems thinking
-- A genuinely useful tool for edge AI engineers running multi-model workloads
-- A vehicle for systematic learning in GPU systems, real-time scheduling, and memory management
-- A discussion artifact with senior infra, compiler, and systems engineers
+By contributing to GPU scheduling research, AegisRT positions itself at the intersection of two growing fields: real-time systems and AI infrastructure.
 
 ---
 
-## 2. What AegisRT Explicitly Is
+## Core Differentiator: GPU-Aware Real-Time Scheduling
 
-- A **GPU resource orchestrator** for multi-model edge AI inference
-- A scheduling and memory management layer that sits **above** existing runtimes
-- Targeting **edge GPUs / SoCs** (Jetson Orin, similar constrained devices)
-- Focused on **deterministic, bounded-latency inference** under resource constraints
-- Implemented primarily in **C++ / CUDA**
-- Grounded in **real-time scheduling theory** adapted for GPU execution
-- Designed around **explicit control**, not heuristics hidden in frameworks
+### The Theoretical Challenge
 
----
+Classical real-time scheduling theory (Liu & Layland, 1973) assumes:
 
-## 3. What AegisRT Explicitly Is *Not*
+1. **Tasks are preemptible**: The scheduler can interrupt a running task at any time
+2. **WCET is known and static**: Worst-case execution time is a fixed parameter
+3. **Single sequential processor**: One CPU core executes tasks one at a time
+4. **Independent tasks**: Tasks do not interfere with each other
 
-- *Not* a full ML framework
-- *Not* a PyTorch replacement
-- *Not* a compiler (it consumes pre-lowered graphs from TVM, TensorRT, etc.)
-- *Not* a replacement for TensorRT, TVM Runtime, or ONNX Runtime
-- *Not* a kernel library (it delegates kernel execution to existing runtimes)
-- *Not* a benchmark-only toy
+**GPUs violate every single assumption.**
 
-AegisRT intentionally lives **above** runtimes and **below** applications. It orchestrates, it does not execute.
+### How AegisRT Adapts
 
----
+| Classical Assumption | GPU Reality | AegisRT Adaptation |
+|---------------------|-------------|-------------------|
+| Preemptible tasks | Kernels run to completion | Non-preemptive scheduling analysis |
+| Static WCET | WCET varies with contention | Contention-aware WCET profiling |
+| Sequential processor | Massively parallel | Model sequentialisation with resource partitioning |
+| Independent tasks | Shared memory bandwidth | Resource-aware schedulability tests |
 
-## 4. Conceptual Pillars
+### Research Contributions
 
-### 4.1 Determinism over Peak Throughput
+AegisRT aims to contribute to the following research directions:
 
-Edge systems care more about *worst‑case latency* than average throughput. AegisRT treats determinism as a first‑class design constraint.
+#### 1. Non-Preemptive GPU Scheduling
 
-**Architectural Implication:** Scheduling decisions prioritise latency predictability over utilisation maximisation. This manifests in explicit stream allocation, bounded queue depths, and rejection of work rather than unbounded buffering.
+Adapting EDF and RMS theory for non-preemptive execution requires computing **blocking time** — the maximum time a high-priority task must wait for a lower-priority task to complete. This is well-understood for CPUs but under-explored for GPUs.
 
-**Code Manifestation:** Schedulers expose worst‑case latency metrics. Memory allocators fail fast rather than triggering hidden compaction. Execution traces include timing distributions, not just averages.
+**Open Questions**:
+- How does kernel size distribution affect blocking time bounds?
+- Can we predict blocking time from model architecture?
+- What is the optimal task granularity for GPU scheduling?
 
-### 4.2 Explicit Resource Ownership
+#### 2. Contention-Aware WCET Estimation
 
-No hidden global allocators, no implicit streams. Every resource has an owner, lifetime, and release semantics.
+GPU execution time varies significantly based on co-running workloads. Memory bandwidth, cache, and SM contention can double or triple execution time.
 
-**Architectural Implication:** RAII principles extend to GPU resources. CUDA streams, events, and device memory are wrapped in C++ objects with clear ownership semantics. No resource outlives its owner.
+**Open Questions**:
+- What contention factors are predictable?
+- How do we build safety margins for unknown contention?
+- Can we profile contention effects efficiently?
 
-**Code Manifestation:** All CUDA resources are managed via `std::unique_ptr` with custom deleters or dedicated RAII wrappers. Lifetimes are statically analysable. No global state beyond the CUDA runtime itself.
+#### 3. Thermal-Aware Scheduling
 
-### 4.3 Scheduler as a First-Class Citizen (Grounded in Real-Time Theory)
+Edge devices experience thermal throttling, which affects both performance and latency guarantees.
 
-Scheduling policy is not a side effect of execution -- it *is* the execution model. AegisRT adapts classical real-time scheduling theory (Rate-Monotonic, Earliest Deadline First) for the unique constraints of GPU execution.
-
-**The GPU Scheduling Challenge:** Traditional RT scheduling assumes preemptible tasks with known worst-case execution times (WCET) on a sequential processor. GPUs violate all three assumptions: kernels are non-preemptible, WCET varies with contention, and the processor is massively parallel with shared resources. Adapting RT theory to this domain is the core research contribution.
-
-**Architectural Implication:** The scheduler is the central orchestration component. It performs admission control (can this model be added without violating existing guarantees?), computes schedulability (can all admitted models meet their deadlines?), and makes per-invocation scheduling decisions. Policy (RMS, EDF, priority) is explicit and swappable.
-
-**Code Manifestation:** Scheduler interface accepts execution requests with deadlines and priorities. WCET profiles are maintained per model. Admission control runs schedulability analysis before accepting new workloads. All decisions are logged with rationale.
-
-### 4.4 Execution Context Isolation
-
-Each model executes within an isolated context with hard resource budgets. One model's failure (OOM, timeout, CUDA error) does not propagate to others.
-
-**Architectural Implication:** Per-model execution contexts own their stream allocation, memory budget, and fault boundary. Resource budgets are hard limits, not hints. Exceeding a budget triggers explicit rejection, not silent degradation.
-
-**Code Manifestation:** `ExecutionContext` objects encapsulate per-model resource ownership. Stream pools are partitioned. Memory budgets are enforced at allocation time. Fault isolation is achieved through context-scoped error handling.
-
-### 4.5 Hardware Awareness Without Hardware Lock-In
-
-The system exposes Orin-specific properties (SM count, memory limits, thermal state), but avoids baking assumptions that prevent portability.
-
-**Architectural Implication:** Hardware capabilities are queried at runtime and exposed as configuration parameters. Algorithms adapt to available resources rather than assuming fixed hardware profiles.
-
-**Code Manifestation:** Device properties are encapsulated in a `DeviceContext` object. Scheduling and memory allocation strategies accept device constraints as parameters. No `#ifdef JETSON_ORIN` in core logic.
+**Open Questions**:
+- How do we adapt guarantees under thermal throttling?
+- Can we predict thermal headroom from workload characteristics?
+- What scheduling policies minimise thermal impact?
 
 ---
 
-## 5. Intended Audience
+## Design Philosophy
 
-- Edge AI engineers running multi-model workloads on constrained GPUs
-- AI Infra engineers building deployment pipelines for autonomous driving, robotics, or similar domains
-- Runtime / compiler engineers interested in GPU scheduling theory
-- Systems engineers working on real-time GPU execution
-- Myself, six months from now, explaining my thinking to others
+### Pillar 1: Determinism Over Throughput
+
+**Principle**: Edge autonomous systems value predictability over peak performance.
+
+**Implication**: AegisRT prioritises worst-case latency over average throughput. This manifests as:
+- Bounded queue depths (no unbounded buffering)
+- Explicit admission control (reject work rather than degrade)
+- Non-work-conserving scheduling (idle GPU is acceptable if guarantees are maintained)
+
+**Trade-off**: Under light load, GPU utilisation may be suboptimal. This is acceptable.
+
+### Pillar 2: Formal Over Heuristic
+
+**Principle**: Scheduling decisions should be provably correct, not empirically tuned.
+
+**Implication**: AegisRT uses formal schedulability analysis derived from real-time theory. This manifests as:
+- Admission control based on utilisation bounds
+- Response-time analysis for deadline guarantees
+- Conservative WCET estimates with statistical confidence
+
+**Trade-off**: Formal analysis may reject configurations that would work in practice. This is acceptable.
+
+### Pillar 3: Observable Over Opaque
+
+**Principle**: Every scheduling decision should be explainable.
+
+**Implication**: AegisRT treats observability as a contract, not a feature. This manifests as:
+- Structured traces for every decision
+- Rationale logging for admission/rejection
+- Offline analysis tools for reconstruction
+
+**Trade-off**: Tracing adds overhead. This is acceptable for correctness.
+
+### Pillar 4: Composition Over Competition
+
+**Principle**: AegisRT complements existing runtimes; it does not compete with them.
+
+**Implication**: AegisRT delegates kernel execution to TensorRT/TVM/ONNX Runtime. This manifests as:
+- RuntimeBackend abstraction for integration
+- Focus on what runtimes do NOT provide
+- No kernel implementation or optimisation
+
+**Trade-off**: AegisRT cannot optimise kernel-level execution. This is acceptable.
 
 ---
 
-## 6. Architectural Philosophy
+## Market Position and Competitive Landscape
 
-AegisRT's architecture is governed by separation of concerns across three primary domains:
+### What AegisRT Is Not Competing With
 
-### 6.1 Orchestration vs Execution vs Scheduling
+| Category | Representative Projects | Why Not Competition |
+|----------|------------------------|---------------------|
+| Inference Runtimes | TensorRT, TVM, ONNX Runtime | AegisRT orchestrates them, not replaces |
+| ML Frameworks | PyTorch, TensorFlow, JAX | AegisRT is deployment-focused, not training |
+| Distributed Inference | Ray Serve, Triton, vLLM | AegisRT is single-node, single-GPU |
+| Kernel Libraries | cuDNN, cutlass, Tensor Cores | AegisRT delegates kernel execution |
 
-**Orchestration:** AegisRT's primary role. Manages resource allocation, context isolation, and cross-model coordination. Delegates actual kernel execution to existing runtimes.
-
-**Execution:** Handled by existing runtimes (TensorRT, TVM Runtime, etc.). AegisRT wraps these runtimes in execution contexts with resource budgets and fault isolation.
-
-**Scheduling:** Policy layer that decides *when* and *with what resources* to execute submitted workloads. Grounded in real-time scheduling theory. Owns admission control and schedulability analysis. Decoupled from execution mechanics.
-
-**Rationale:** Separation enables independent evolution of scheduling policy without touching execution logic. Existing runtimes handle kernel optimisation (their strength); AegisRT handles resource orchestration (the unsolved problem).
-
-### 6.2 Explicit State Machines over Implicit Heuristics
-
-AegisRT prefers explicit, inspectable state machines over heuristic-driven behaviour.
-
-**Example:** Memory allocation does not use hidden heuristics to decide when to compact or evict. Instead, allocation requests either succeed immediately or fail with explicit error codes. The caller decides how to respond.
-
-**Rationale:** Heuristics obscure system behaviour and make debugging non-deterministic. Explicit state machines are testable, traceable, and understandable.
-
-### 6.3 Compile-Time vs Runtime Decisions
-
-**Compile-Time (Graph Construction):** Operator fusion, memory layout selection, kernel selection. These are expensive decisions made once during graph lowering.
-
-**Runtime (Execution):** Stream assignment, memory binding, synchronisation. These are cheap decisions made per invocation.
-
-**Rationale:** Separating expensive optimisation from cheap orchestration keeps the runtime fast and predictable. Graph construction can take seconds; execution must take microseconds.
-
-### 6.4 Layered Abstraction Model
+### AegisRT's Unique Position
 
 ```
-+---------------------------+
-| Observability Layer       |  (Tracing, metrics, audit trail)
-+---------------------------+
-| Scheduling Policy Layer   |  (RMS, EDF, admission control)
-+---------------------------+
-| Cross-Model Memory Orch.  |  (Lifetime analysis, sharing, pressure)
-+---------------------------+
-| Execution Context Isol.   |  (Per-model budgets, fault isolation)
-+---------------------------+
-| CUDA Runtime Abstraction  |  (Streams, events, memory pools)
-+---------------------------+
-| Existing Runtimes         |  (TensorRT, TVM RT, ONNX RT)
-+---------------------------+
-| CUDA Driver API           |
-+---------------------------+
++--------------------------------------------------------------+
+|                  Inference Stack Positioning                 |
++--------------------------------------------------------------+
+|                                                              |
+|           High-Level Frameworks (Training & Serving)         |
+|             PyTorch, TensorFlow, Ray Serve, vLLM             |
+|                              |                               |
+|   +--------------------------v---------------------------+   |
+|   |                       AegisRT                        |   |
+|   |                 "The Missing Layer"                  |   |
+|   |                                                      |   |
+|   |   Deterministic Scheduling + Admission Control +     |   |
+|   |      Cross-Model Memory + Execution Isolation        |   |
+|   |                                                      |   |
+|   +--------------------------+---------------------------+   |
+|                              |                               |
+|                              v                               |
+|            Inference Runtimes (Kernel Execution)             |
+|             TensorRT, TVM Runtime, ONNX Runtime              |
+|                              |                               |
+|                              v                               |
+|           GPU Hardware (CUDA, NVIDIA, AMD, Intel)            |
+|                                                              |
++--------------------------------------------------------------+
 ```
 
-Each layer depends only on the layer below. No layer reaches across boundaries. Existing runtimes are treated as opaque execution backends.
+### Target Users
 
-### 6.5 Observability as First-Class Constraint
-
-Every scheduling decision, memory allocation, and kernel launch is traceable. Execution produces structured logs and metrics suitable for offline analysis.
-
-**Rationale:** Without observability, determinism cannot be verified. Tracing is not optional—it is part of the contract.
-
-### 6.6 Failure Domains and Error Propagation
-
-Errors are categorised by recoverability:
-
-- **Transient Errors:** Temporary resource exhaustion. Caller can retry.
-- **Permanent Errors:** Invalid graph, unsupported operator. Caller must abort.
-- **Fatal Errors:** CUDA driver failure, device lost. Process must terminate.
-
-Each layer propagates errors upward with sufficient context for diagnosis. No silent failures.
+1. **Edge AI Engineers**: Building multi-model pipelines on Jetson,Qualcomm, or similar platforms
+2. **Autonomous Systems Developers**: Safety-critical perception systems with hard deadlines
+3. **Real-Time Systems Researchers**: Investigating GPU scheduling and WCET analysis
+4. **AI Infrastructure Engineers**: Designing deployment pipelines for edge AI
 
 ---
 
-## 7. Systems Constraints and Trade-offs
+## Long-Term Vision
 
-### 7.1 Edge SoC Constraints
+### Phase 1: Foundation (Current)
 
-**Constraint:** Limited VRAM (8-16 GB on Jetson Orin), thermal throttling, shared memory with CPU.
+- Establish GPU scheduling framework
+- Validate real-time theory adaptation
+- Build community around deterministic edge AI
 
-**Rationale:** Edge devices cannot rely on datacenter-class cooling or memory capacity. Memory pressure is the norm, not the exception.
+### Phase 2: Integration (Year 1-2)
 
-**Implication:** Memory allocation must be predictable and bounded. No unbounded caching. Explicit memory budgets per model.
+- TensorRT, TVM, ONNX Runtime backend support
+- Jetson Orin optimisation
+- Industry pilot projects
 
-**Alternative Rejected:** Dynamic memory management with hidden eviction policies. Too unpredictable for real-time constraints.
+### Phase 3: Ecosystem (Year 2-3)
 
-### 7.2 Single-Node Constraint
+- Hardware abstraction for other accelerators (NPU, DSP)
+- Integration with edge orchestration platforms
+- Academic collaborations and publications
 
-**Constraint:** AegisRT targets single-GPU execution. No distributed scheduling, no multi-node communication.
+### Phase 4: Standardisation (Year 3+)
 
-**Rationale:** Distributed scheduling introduces complexity (network latency, failure modes, consistency) orthogonal to core runtime concerns.
-
-**Implication:** Scheduling decisions are local and synchronous. No need for distributed consensus or fault tolerance.
-
-**Alternative Rejected:** Multi-node support. Adds 10x complexity for use cases outside project scope.
-
-### 7.3 Static Graph Constraint
-
-**Constraint:** Execution graphs are static DAGs. No dynamic control flow (if/while), no runtime graph mutation.
-
-**Rationale:** Static graphs enable ahead-of-time optimisation (memory planning, kernel fusion) and deterministic execution.
-
-**Implication:** Dynamic models (RNNs with variable sequence length, dynamic batching) require graph recompilation or padding.
-
-**Alternative Rejected:** Dynamic graphs with runtime recompilation. Sacrifices determinism and adds compilation overhead to critical path.
-
-### 7.4 Inference-Only Constraint
-
-**Constraint:** AegisRT is designed for inference, not training. No gradient computation, no backpropagation, no optimiser state.
-
-**Rationale:** Training and inference have fundamentally different resource profiles. Training requires large memory for activations and gradients; inference requires low latency.
-
-**Implication:** Memory allocator optimises for small, frequent allocations. No need to track computation history.
-
-**Alternative Rejected:** Unified training/inference runtime. Training requirements dominate design, making inference suboptimal.
-
-### 7.5 Determinism vs Throughput Trade-off
-
-**Trade-off:** Deterministic scheduling (fixed stream assignment, bounded queues) reduces peak throughput compared to opportunistic scheduling.
-
-**Choice:** Prioritise determinism. Edge systems value predictability over peak performance.
-
-**Consequence:** Under light load, GPU utilisation may be suboptimal. This is acceptable.
-
-### 7.6 Memory Predictability vs Flexibility Trade-off
-
-**Trade-off:** Static memory planning (allocate all buffers upfront) is predictable but inflexible. Dynamic allocation is flexible but unpredictable.
-
-**Choice:** Static memory planning with explicit budgets. Flexibility is achieved through graph recompilation, not runtime allocation.
-
-**Consequence:** Models with highly variable memory requirements may require multiple graph variants.
+- Contribute to industry standards for edge AI deployment
+- Reference implementation for GPU real-time scheduling
+- Educational resources and training
 
 ---
 
-## 8. Anti-Patterns and Anti-Goals
+## Personal Growth Dimensions
 
-### 8.1 Anti-Pattern: Hidden Global State
+### Why This Project Serves Your Development
 
-**Description:** Global allocators, implicit default streams, singleton device contexts.
+AegisRT is designed to address the specific gap you identified: **busy work without systematic growth**.
 
-**Why Forbidden:** Global state makes testing impossible, introduces hidden dependencies, and prevents concurrent execution of independent workloads.
+#### Dimension 1: Depth Over Breadth
 
-**Correct Approach:** All resources are explicitly passed as parameters or owned by context objects with clear lifetimes.
+Instead of jumping between disparate problems (DLB, GPU Manager, CUDA operators, TVM), AegisRT focuses on a single, deep technical challenge. This enables:
 
-### 8.2 Anti-Pattern: Heuristic-Driven Resource Management
+- **Systematic knowledge building**: Each component builds on the previous
+- **Research contribution**: Novel problems yield novel solutions
+- **Portfolio depth**: One deep project > many shallow projects
 
-**Description:** Allocators that "intelligently" decide when to compact, evict, or prefetch based on usage patterns.
+#### Dimension 2: Theory Meets Practice
 
-**Why Forbidden:** Heuristics are non-deterministic, difficult to test, and fail unpredictably under novel workloads.
+AegisRT bridges real-time systems theory and GPU systems practice:
 
-**Correct Approach:** Explicit allocation policies with predictable failure modes. Caller decides retry strategy.
+- **Theoretical foundation**: RT scheduling, WCET analysis, formal methods
+- **Practical application**: CUDA programming, edge deployment, performance engineering
+- **Research contribution**: Adapting theory for new constraints
 
-### 8.3 Anti-Pattern: Framework Coupling
+#### Dimension 3: Independent Viability
 
-**Description:** Tight integration with PyTorch, TensorFlow, or ONNX Runtime internals.
+AegisRT is designed for **independent development**:
 
-**Why Forbidden:** Framework coupling creates maintenance burden and limits architectural freedom.
+- **Hardware requirements**: Single Jetson Orin or cloud GPU
+- **No proprietary dependencies**: All tools and frameworks are open source
+- **Self-contained scope**: Single-node, single-GPU focus
 
-**Correct Approach:** Consume pre-lowered, framework-agnostic graph representations. Frameworks are build-time dependencies, not runtime dependencies.
+#### Dimension 4: Market Relevance
 
-### 8.4 Anti-Pattern: Premature Generalisation
+The skills developed through AegisRT are increasingly valuable:
 
-**Description:** Designing for hypothetical future requirements (multi-GPU, distributed, training) not in current scope.
+- **Edge AI deployment**: Growing market with talent shortage
+- **Real-time systems**: Critical for autonomous systems, industrial IoT
+- **GPU systems**: Foundation for all modern AI infrastructure
 
-**Why Forbidden:** Generalisation adds complexity without delivering value. Abstractions should emerge from concrete needs, not speculation.
+### Learning Path Embedded in Development
 
-**Correct Approach:** Solve the single-GPU inference problem completely. Generalise only when multiple concrete use cases demand it.
-
-### 8.5 Anti-Goal: Replacing Existing Runtimes
-
-**Goal:** AegisRT orchestrates existing runtimes, it does not replace them.
-
-**Implication:** No need to implement kernel execution, operator fusion, or model compilation. Focus on what existing runtimes do NOT provide: deterministic multi-model scheduling, cross-model memory orchestration, and execution context isolation.
-
-### 8.6 Anti-Goal: Benchmark Optimisation
-
-**Goal:** AegisRT prioritises understandability over leaderboard performance.
-
-**Implication:** If a technique improves performance but obscures architecture (e.g., hand-tuned assembly kernels), reject it. Use cuBLAS/cuDNN for kernels; focus on orchestration.
-
----
-
-## 9. System Boundaries and Interfaces
-
-### 9.1 Input Boundary: Execution Requests with Resource Requirements
-
-**Format:** Execution requests wrapping pre-compiled models from existing runtimes (TensorRT engines, TVM compiled modules, ONNX Runtime sessions).
-
-**Assumption:** Models are already compiled and optimised by their respective runtimes. AegisRT does not perform model compilation or kernel optimisation.
-
-**Contract:** Each request specifies resource requirements (memory budget, deadline, priority). AegisRT performs admission control before accepting.
-
-### 9.2 Output Boundary: Execution Traces and Metrics
-
-**Format:** Structured logs (JSON, protobuf) containing:
-- Kernel launch timestamps
-- Memory allocation events
-- Scheduling decisions
-- Synchronisation points
-
-**Purpose:** Offline analysis, debugging, performance profiling.
-
-**Contract:** Tracing does not affect execution correctness, only performance.
-
-### 9.3 Runtime Backend Boundary: Existing Inference Runtimes
-
-**Abstraction Level:** AegisRT wraps existing runtimes (TensorRT, TVM Runtime, ONNX Runtime) as opaque execution backends. It manages their resource consumption, not their internal execution.
-
-**Rationale:** Existing runtimes are mature and well-optimised for kernel execution. AegisRT adds value at the orchestration layer, not the execution layer.
-
-**Contract:** Each runtime backend implements a common interface for resource estimation, execution, and status reporting. AegisRT controls when and with what resources each backend executes.
-
-### 9.4 CUDA Boundary: CUDA Runtime API
-
-**Abstraction Level:** AegisRT wraps CUDA runtime API (streams, events, memory) for resource management purposes.
-
-**Rationale:** Runtime API provides sufficient control for scheduling and memory management without low-level complexity.
-
-**Contract:** All CUDA calls are wrapped in RAII objects. No raw CUDA handles escape AegisRT interfaces.
-
-### 9.5 Scheduling Boundary: CPU Orchestration, GPU Execution
-
-**CPU Responsibilities:** Graph submission, scheduling decisions, memory allocation, synchronisation.
-
-**GPU Responsibilities:** Kernel execution only. No GPU-side scheduling or memory management.
-
-**Rationale:** CPU has full system visibility and can make globally optimal decisions. GPU-side scheduling adds complexity without clear benefit for single-node inference.
-
-### 9.6 Memory Boundary: Device Memory Only
-
-**Scope:** AegisRT manages device (GPU) memory only. Host (CPU) memory is caller's responsibility.
-
-**Rationale:** Host memory management is well-solved by standard C++ allocators. Device memory requires specialised lifetime tracking.
-
-**Contract:** Caller provides host buffers for input/output. AegisRT handles device-side allocation and transfers.
+| Phase | Technical Skills | Research Skills | Engineering Skills |
+|-------|-----------------|-----------------|-------------------|
+| 0-1 | CUDA, RAII, Build Systems | Literature Review | Testing, CI/CD |
+| 2-3 | Memory Management, Isolation | Problem Formulation | API Design |
+| 4-5 | Scheduling Algorithms | Algorithm Design | Performance Testing |
+| 6+ | Optimisation, Integration | Publication Writing | Documentation |
 
 ---
 
-## 10. Success Metrics and Evaluation Criteria
+## What Success Looks Like
 
-### 10.1 Clarity Metric: Understandable in < 2 Hours
+### Technical Success
 
-**Test:** Can a senior systems engineer understand the full architecture by reading documentation and skimming code in under 2 hours?
+- AegisRT provides measurable value over baseline (no scheduler)
+- Admission control is provably correct
+- Latency distributions are deterministic (CV < 5%)
 
-**Measurement:** Conduct informal reviews with peers. Track questions and confusion points.
+### Community Success
 
-### 10.2 Determinism Metric: Identical Latency Distributions
+- Other engineers find AegisRT useful for their edge AI projects
+- Researchers cite AegisRT in GPU scheduling papers
+- Contributors join the project
 
-**Test:** Run the same model 1000 times. Latency distribution should be unimodal with low variance (< 5% coefficient of variation).
+### Personal Success
 
-**Measurement:** Collect per-invocation latency. Plot histogram. Verify no long tail.
+- Deep expertise in GPU systems and real-time scheduling
+- Published research or technical blog posts
+- Portfolio project that demonstrates systematic thinking
+- Foundation for future independent work
 
-### 10.3 Explainability Metric: Traceable Scheduling Decisions
+---
 
-**Test:** For any execution, can we reconstruct why the scheduler made specific decisions (stream assignment, priority, rejection)?
+## Risks and Mitigations
 
-**Measurement:** Execution traces include decision rationale. Offline analysis tool can replay scheduling logic.
+### Risk: Runtimes Are Commodity
 
-### 10.4 Demonstrability Metric: Presentable Architecture
+**Mitigation**: AegisRT is explicitly NOT a runtime. It is an **orchestration layer** that addresses what runtimes do not. Focus messaging on scheduling, not execution.
 
-**Test:** Can the architecture be explained in a 30-minute technical presentation without apology or caveats?
+### Risk: GPU Scheduling Is Too Hard
 
-**Measurement:** Prepare presentation. Deliver to technical audience. Collect feedback on clarity.
+**Mitigation**: Start with simplified assumptions (single GPU, static graphs, known models). Expand scope incrementally as understanding deepens.
 
-### 10.5 Architectural Metric: Clean Separation of Concerns
+### Risk: No Community Interest
 
-**Test:** Can scheduling policy be swapped without modifying execution engine? Can memory allocator be replaced without touching scheduler?
+**Mitigation**: Target a specific niche (edge AI engineers with multi-model latency requirements). Build value before building community.
 
-**Measurement:** Implement alternative scheduler (e.g., priority-based). Verify no changes to execution layer required.
+### Risk: Hardware Dependencies
 
+**Mitigation**: Maintain CUDA abstraction layer. Design for portability from the start. Test on both Jetson and server GPUs.
 
+---
+
+## References
+
+### Foundational Papers
+
+- Liu, C. L., & Layland, J. W. (1973). Scheduling algorithms for multiprogramming in a hard-real-time environment. *JACM*.
+- Liu, J. W. S. (2000). *Real-Time Systems*. Prentice Hall.
+- George, L., Rivierre, N., & Spuri, M. (1996). Preemptive and non-preemptive real-time uniprocessor scheduling. *INRIA*.
+
+### GPU Systems Research
+
+- Zhang, Q., et al. (REEF, SOSP 2023). Reactive GPU execution for real-time AI services.
+- Gujarati, A., et al. (Clockwork, OSDI 2020). Serving DNNs in real-time at datacenter scale.
+- Yu, G., et al. (Orion, ATC 2023). Accelerating DNN inference with GPU-aware memory management.
+- Chen, J., et al. (Prem, ASPLOS 2023). Prem: Predictable GPU execution for real-time systems.
+
+### Related Projects
+
+- NVIDIA TensorRT: https://developer.nvidia.com/tensorrt
+- Apache TVM: https://tvm.apache.org/
+- ONNX Runtime: https://onnxruntime.ai/
+- PREEMPT-RT Linux: https://wiki.linuxfoundation.org/realtime/
+
+---
+
+**"The goal is not to build another runtime. The goal is to solve the problem that runtimes do not."**

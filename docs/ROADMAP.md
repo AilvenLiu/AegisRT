@@ -1,227 +1,565 @@
 # AegisRT Development Roadmap
 
-## Purpose and Scope
+## Roadmap Philosophy
 
-This roadmap defines the sequential development path for AegisRT from foundational substrate to a working GPU resource orchestrator with deterministic scheduling guarantees. Each phase builds upon the previous, with mandatory exit criteria preventing premature advancement.
+This roadmap transforms the architectural vision into a **sequential development path** with clear exit criteria and embedded learning outcomes. The guiding principle is:
 
-**Roadmap Objective:** Transform architectural vision (OUTLOOK.md) into a working GPU orchestration layer that provides deterministic multi-model scheduling, cross-model memory management, execution context isolation, and full observability.
-
-**Roadmap Constraint:** Phases execute sequentially. No phase begins until predecessor's exit criteria are satisfied.
+> **Each phase establishes invariants required by subsequent phases. Correctness precedes performance.**
 
 ---
 
 ## Roadmap Principles
 
-### 1. Sequential Execution
+### Principle 1: Sequential Dependency
 
-Phases are not parallelisable. Each phase establishes invariants required by subsequent phases. Skipping or reordering phases violates architectural dependencies.
+Phases execute sequentially. No phase begins until the predecessor's exit criteria are satisfied. Dependency violations are architectural failures.
 
-### 2. Mandatory Exit Criteria
+### Principle 2: Measurable Exit Criteria
 
-Each phase defines measurable, verifiable exit criteria. Advancement requires explicit verification, not subjective assessment.
+Each phase defines specific, verifiable exit criteria. Advancement requires explicit verification, not subjective assessment.
 
-### 3. Minimal Viable Deliverables
+### Principle 3: Learning Embedded in Development
+
+Each phase includes explicit learning outcomes. Development is not just code delivery—it is systematic skill acquisition.
+
+### Principle 4: Minimal Viable Deliverables
 
 Phases deliver the minimum functionality required to satisfy exit criteria. No speculative features, no premature optimisation.
-
-### 4. Architectural Consistency
-
-All phases respect constraints defined in CLAUDE.md, CONTRIBUTING.md, and OUTLOOK.md. No phase introduces violations for convenience.
-
-### 5. Incremental Complexity
-
-Early phases establish simple, correct implementations. Later phases introduce optimisation and sophistication. Correctness precedes performance.
 
 ---
 
 ## Phase Dependency Graph
 
 ```
-Phase 0: Foundations (Layer 1)
+Phase 0: CUDA Foundation
     |
-    | (Establishes: CUDA abstraction, memory pool, build system)
+    |  Establishes: RAII wrappers, memory pool, build system
+    |
     v
-Phase 1: Execution Context Isolation (Layer 2)
+Phase 1: Execution Context
     |
-    | (Establishes: Per-model contexts, resource budgets, runtime backends)
+    |  Establishes: Per-model isolation, resource budgets, fault boundaries
+    |
     v
-Phase 2: Cross-Model Memory Orchestration (Layer 3)
+Phase 2: Memory Orchestration
     |
-    | (Establishes: Lifetime analysis, memory sharing, pressure handling)
+    |  Establishes: Cross-model sharing, lifetime analysis, pressure handling
+    |
     v
-Phase 3: Deterministic Scheduler (Layer 4 - Core Differentiator)
+Phase 3: Deterministic Scheduler (CORE DIFFERENTIATOR)
     |
-    | (Establishes: RT scheduling, WCET profiling, admission control)
+    |  Establishes: WCET profiling, admission control, RT scheduling policies
+    |
     v
-Phase 4: Observability & Validation (Layer 5)
+Phase 4: Observability & Validation
     |
-    | (Establishes: Tracing, metrics, audit trail, performance case studies)
+    |  Establishes: Full tracing, determinism validation, case studies
+    |
+    v
+Phase 5: Integration & Polish
+    |
+    |  Establishes: Real backend integration, documentation, community release
+    |
     v
 Roadmap Complete
 ```
 
-**Critical Path:** No phase can begin until all predecessors complete. Dependency violations are architectural failures.
+---
+
+## Phase 0: CUDA Foundation
+
+### Duration Estimate
+
+2-3 weeks (part-time independent development)
+
+### Objective
+
+Establish minimal CUDA abstraction substrate with RAII wrappers, memory pool, and build infrastructure.
+
+### Deliverables
+
+| Component | Description |
+|-----------|-------------|
+| Build System | CMake configuration with cross-compilation support for Jetson |
+| `CudaContext` | Device selection and initialisation |
+| `CudaStream` | RAII wrapper for `cudaStream_t` |
+| `CudaEvent` | RAII wrapper for `cudaEvent_t` |
+| `DeviceMemoryPool` | Explicit allocation/deallocation with leak detection |
+| `DeviceCapabilities` | Hardware capability discovery |
+| `TraceCollector` | Structured event collection with JSON export |
+| Unit Tests | >70% coverage for all Layer 1 components |
+
+### Technical Specifications
+
+```cpp
+// CudaStream RAII contract
+class CudaStream {
+public:
+    CudaStream();                           // Creates stream
+    ~CudaStream();                          // Destroys stream (no leak)
+    CudaStream(CudaStream&&) noexcept;      // Move-only semantics
+    CudaStream(const CudaStream&) = delete; // No copy
+
+    cudaStream_t handle() const;
+    void synchronize();
+    bool is_ready() const;
+};
+
+// DeviceMemoryPool contract
+class DeviceMemoryPool {
+public:
+    explicit DeviceMemoryPool(size_t capacity);
+
+    Result<void*> allocate(size_t bytes);
+    void deallocate(void* ptr);
+
+    size_t capacity() const;
+    size_t used() const;
+    size_t available() const;
+};
+```
+
+### Exit Criteria
+
+| Criterion | Verification Method |
+|-----------|-------------------|
+| All CUDA resources via RAII | Code review, no raw handles in application code |
+| No memory leaks | cuda-memcheck with leak check enabled |
+| All CUDA calls checked | Code review, no unchecked API calls |
+| Cross-compilation works | Build on x86_64, deploy to Jetson |
+| Tests pass | >70% coverage, all tests green |
+
+### Learning Outcomes
+
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Modern C++ | RAII patterns, move semantics, smart pointers |
+| CUDA Programming | Stream management, event synchronisation, memory allocation |
+| Build Systems | CMake, cross-compilation, dependency management |
+| Testing | GoogleTest, coverage measurement, test design |
+
+### References
+
+- CUDA C++ Programming Guide: Stream Management
+- "Effective Modern C++" by Scott Meyers: Item 17-22 (RAII)
+- CMake documentation: Cross-compilation
 
 ---
 
-## Phase Summaries
+## Phase 1: Execution Context Isolation
 
-### Phase 0: Foundations (Layer 1: CUDA Runtime Abstraction)
+### Duration Estimate
 
-**Intent:** Establish minimal CUDA abstraction substrate with RAII wrappers, memory pool, and build system.
+2-3 weeks
 
-**Key Deliverables:**
-- Repository scaffolding (CMake, directory structure, CI configuration)
-- CUDA context and stream abstraction with RAII wrappers
-- CUDA event abstraction with RAII wrappers
-- Device memory pool with explicit allocation/deallocation
-- CUDA_CHECK error macro for all API calls
-- Basic device capability discovery
+### Objective
 
-**Exit Criteria:**
-- All CUDA resources managed via RAII (no raw handles in application code)
-- Memory pool allocates and deallocates without leaks (verified by cuda-memcheck)
-- Build system supports cross-compilation for Jetson Orin
-- All CUDA API calls checked for errors
-- Unit tests with >= 70% coverage for Layer 1 components
+Provide per-model execution contexts with hard resource budgets, fault isolation, and runtime backend abstraction.
 
-**Architectural Significance:** Establishes resource ownership model and CUDA abstraction layer. All subsequent layers build on these primitives.
+### Deliverables
 
-**Learning Focus:** Modern C++20, CUDA programming, RAII patterns, CMake
+| Component | Description |
+|-----------|-------------|
+| `ExecutionContext` | Per-model resource container with ownership semantics |
+| `ResourceBudget` | Hard limits on memory, streams, and compute time |
+| `FaultBoundary` | Error isolation between contexts |
+| `RuntimeBackend` | Abstract interface for inference runtime integration |
+| `MockBackend` | Test double for development |
+| Integration Tests | Multi-model isolation scenarios |
 
----
+### Technical Specifications
 
-### Phase 1: Execution Context Isolation (Layer 2)
+```cpp
+struct ResourceBudget {
+    size_t memory_limit;      // Maximum device memory
+    int stream_limit;         // Maximum concurrent streams
+    Duration compute_budget;  // Maximum compute time per period
+};
 
-**Intent:** Provide per-model execution contexts with hard resource budgets, fault isolation, and runtime backend abstraction.
+class ExecutionContext {
+public:
+    ExecutionContext(
+        ModelID model,
+        ResourceBudget budget,
+        std::unique_ptr<RuntimeBackend> backend
+    );
 
-**Key Deliverables:**
-- `ExecutionContext` with per-model resource ownership
-- `ResourceBudget` with hard limits on memory and streams
-- `FaultBoundary` for per-context error isolation
-- `RuntimeBackend` abstract interface for wrapping existing runtimes
-- At least one concrete backend (TensorRT or mock backend for testing)
+    // Resource tracking
+    bool can_allocate(size_t bytes) const;
+    bool can_acquire_stream() const;
 
-**Exit Criteria:**
-- Two models execute in isolated contexts without resource interference
-- Resource budget violations trigger explicit rejection (not silent degradation)
-- One model's CUDA error does not crash the other model's context
-- Runtime backend interface is clean enough to add new backends without modifying core
-- Unit tests with >= 70% coverage for Layer 2 components
+    // Fault isolation
+    bool has_error() const;
+    std::optional<CudaError> last_error() const;
+    void clear_error();
 
-**Architectural Significance:** Establishes the orchestration model -- AegisRT manages contexts, not kernels. This is where cuAdapter experience directly applies.
+private:
+    ModelID model_;
+    ResourceBudget budget_;
+    std::unique_ptr<RuntimeBackend> backend_;
+    std::atomic<size_t> memory_used_{0};
+    std::atomic<int> streams_in_use_{0};
+    std::optional<CudaError> last_error_;
+};
+```
 
-**Learning Focus:** OS concepts (process isolation, resource limits), CUDA MPS, interface design
+### Exit Criteria
 
----
+| Criterion | Verification Method |
+|-----------|-------------------|
+| Contexts are isolated | Two models execute without interference |
+| Budgets are enforced | Budget violations trigger explicit rejection |
+| Faults are contained | One model's error does not affect others |
+| Backend is abstract | New backends can be added without core changes |
+| Tests pass | >70% coverage for Layer 2 components |
 
-### Phase 2: Cross-Model Memory Orchestration (Layer 3)
+### Learning Outcomes
 
-**Intent:** Manage device memory across multiple models with lifetime-aware sharing and explicit pressure handling.
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Systems Design | Resource isolation, fault boundaries, ownership models |
+| Interface Design | Abstract interfaces, dependency injection, testability |
+| Concurrency | Atomic operations, thread-safe state management |
+| Error Handling | Typed errors, error propagation, fault isolation |
 
-**Key Deliverables:**
-- `MemoryOrchestrator` for cross-model memory coordination
-- `LifetimeAnalyser` for computing tensor lifetimes and sharing opportunities
-- `MemoryPlanner` for static cross-model allocation plans
-- `PressureHandler` with explicit policies (shed, reject, compact)
-- Memory sharing between non-overlapping execution windows
+### References
 
-**Exit Criteria:**
-- Peak memory usage reduced compared to per-model isolation (measurable)
-- Memory sharing correctly identified and exploited between non-overlapping models
-- Pressure handling follows explicit policy (no hidden heuristics)
-- All memory allocations occur during planning, not during execution
-- Unit tests with >= 70% coverage for Layer 3 components
-
-**Architectural Significance:** Demonstrates that cross-model orchestration provides measurable value over isolated execution. This is a key differentiator.
-
-**Learning Focus:** Memory allocation algorithms, graph theory, bin-packing, lifetime analysis
-
----
-
-### Phase 3: Deterministic Scheduler (Layer 4 - Core Differentiator)
-
-**Intent:** Implement real-time scheduling algorithms adapted for non-preemptive GPU execution, with WCET profiling and formal admission control.
-
-**Key Deliverables:**
-- `WCETProfiler` for worst-case execution time estimation per model
-- `AdmissionController` with schedulability analysis
-- `SchedulingPolicy` implementations: FIFO baseline, Rate-Monotonic (RMS), Earliest Deadline First (EDF)
-- Non-preemptive scheduling analysis (adapted for GPU constraints)
-- Deadline miss detection and reporting
-
-**Exit Criteria:**
-- WCET bounds are conservative and validated (actual execution never exceeds bound)
-- Admission control correctly rejects models that would violate existing guarantees
-- EDF admits more models than FIFO with same guarantee level (measurable)
-- Latency distributions are unimodal with < 5% coefficient of variation
-- Scheduling decisions are fully traceable (can reconstruct why each decision was made)
-- Unit tests with >= 80% coverage for Layer 4 components (critical path)
-
-**Architectural Significance:** This is the core research contribution. Adapting RT scheduling theory to non-preemptive GPU execution is genuinely novel. This is what makes AegisRT not "just another runtime."
-
-**Learning Focus:** Real-time scheduling theory (Liu & Layland, EDF), WCET analysis, formal methods, GPU scheduling research (REEF, Clockwork, Orion)
+- "Systems Programming" by Bryant & O'Hallaron: Process isolation concepts
+- CUDA MPS documentation: Multi-process scheduling
+- GoogleTest documentation: Mock objects
 
 ---
 
-### Phase 4: Observability & Validation (Layer 5)
+## Phase 2: Memory Orchestration
 
-**Intent:** Provide full traceability, validate determinism claims with real workloads, and produce performance case studies.
+### Duration Estimate
 
-**Key Deliverables:**
-- `TraceCollector` with structured event collection
-- `MetricsAggregator` with per-model resource utilisation
-- `AuditTrail` with scheduling decision rationale
-- Integration with Perfetto or NVIDIA Nsight
-- Performance case studies on Jetson Orin (5+ models, latency analysis)
-- Architecture documentation and design rationale
+3-4 weeks
 
-**Exit Criteria:**
-- Every scheduling decision reconstructible from traces
-- Performance case studies demonstrate determinism claims (< 5% CV)
-- Architecture understandable by senior engineer in < 2 hours
-- System runs 5+ models concurrently on Orin with bounded latency
-- Public-facing documentation clearly communicates what AegisRT is and why
+### Objective
 
-**Architectural Significance:** Validates that the system delivers on its promises. Without observability, determinism cannot be verified.
+Manage device memory across multiple models with lifetime-aware sharing and explicit pressure handling.
+
+### Deliverables
+
+| Component | Description |
+|-----------|-------------|
+| `MemoryOrchestrator` | Cross-model memory coordination |
+| `LifetimeAnalyser` | Tensor lifetime computation from execution graphs |
+| `MemoryPlanner` | Static allocation plan generation |
+| `PressureHandler` | Explicit policies for memory pressure |
+| Allocation Tests | Sharing efficiency benchmarks |
+
+### Technical Specifications
+
+```cpp
+struct TensorLifetime {
+    TensorID tensor;
+    Timestamp start;    // First write
+    Timestamp end;      // Last read
+    size_t size;
+};
+
+struct AllocationPlan {
+    std::map<TensorID, MemoryRegion> allocations;
+    std::vector<SharingOpportunity> sharing;
+    size_t peak_memory;
+};
+
+class MemoryOrchestrator {
+public:
+    // Planning (occurs at admission time)
+    AllocationPlan plan(
+        const std::vector<ExecutionContext*>& contexts,
+        const std::vector<TensorLifetime>& lifetimes
+    );
+
+    // Execution
+    Result<MemoryBinding> bind(ModelID model, const AllocationPlan& plan);
+    void release(ModelID model);
+
+    // Pressure handling
+    void handle_pressure(PressurePolicy policy);
+};
+```
+
+### Exit Criteria
+
+| Criterion | Verification Method |
+|-----------|-------------------|
+| Sharing is automatic | Non-overlapping lifetimes identified and exploited |
+| Peak memory is bounded | Static analysis produces correct peak estimate |
+| Pressure is explicit | Policy-driven handling, no hidden heuristics |
+| Efficiency is measurable | >15% memory reduction vs isolated allocation |
+| Tests pass | >70% coverage for Layer 3 components |
+
+### Learning Outcomes
+
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Memory Management | Arena allocators, lifetime analysis, memory pooling |
+| Algorithms | Graph algorithms, interval scheduling, bin packing |
+| Systems | Memory pressure, OOM handling, resource quotas |
+| Performance | Memory bandwidth, cache effects, allocation patterns |
+
+### References
+
+- "The Art of Multiprocessor Programming" by Herlihy & Shavit: Memory management
+- GPU memory management research: Orbit, Buddy allocator
+- Bin packing algorithms: First-fit, best-fit, optimal
 
 ---
 
-## Cross-Phase Constraints
+## Phase 3: Deterministic Scheduler (CORE DIFFERENTIATOR)
 
-These constraints apply to ALL phases:
+### Duration Estimate
 
-### C1: ASCII-Only British English
+4-6 weeks
 
-All code, comments, documentation, and commit messages use ASCII-only characters with British English spelling. No exceptions.
+### Objective
 
-### C2: RAII for All Resources
+Implement real-time scheduling algorithms adapted for non-preemptive GPU execution, with WCET profiling and formal admission control.
 
-All CUDA resources (streams, events, device memory) managed via RAII wrappers. No raw handles in application code.
+**This is the core research contribution of AegisRT.**
 
-### C3: Explicit Error Handling
+### Deliverables
 
-All CUDA API calls checked for errors. No silent failures. Errors propagated with sufficient context for diagnosis.
+| Component | Description |
+|-----------|-------------|
+| `WCETProfiler` | Statistical worst-case execution time estimation |
+| `AdmissionController` | Formal schedulability analysis |
+| `SchedulingPolicy` | Abstract interface with FIFO, RMS, EDF implementations |
+| `Scheduler` | Central orchestration with admission control |
+| Scheduling Tests | Schedulability validation, deadline miss detection |
 
-### C4: No Kernel Implementation
+### Technical Specifications
 
-AegisRT orchestrates existing runtimes. It does not implement kernel execution, operator fusion, or model compilation. Kernel execution is delegated to runtime backends (TensorRT, TVM, ONNX Runtime).
+```cpp
+struct WCETProfile {
+    Duration worst_case;
+    Duration average_case;
+    double contention_factor;
+    int sample_count;
+    double confidence_level;
+};
 
-### C5: Deterministic Execution
+struct AdmissionRequest {
+    ModelID model;
+    WCETProfile wcet;
+    Period period;
+    Deadline deadline;
+};
 
-Execution order and resource allocation are deterministic. No heuristics, no hidden global state.
+struct AdmissionResult {
+    bool admitted;
+    std::string reason;
+    double utilisation;
+    Duration worst_case_response_time;
+};
 
-### C6: Traceability
+class AdmissionController {
+public:
+    AdmissionResult analyse(
+        const AdmissionRequest& request,
+        const std::vector<ExecutionContext*>& existing
+    );
 
-All scheduling decisions, memory allocations, and kernel launches are traceable via structured logs.
+    // Schedulability tests
+    bool test_rms(const std::vector<TaskParameters>& tasks);
+    bool test_edf(const std::vector<TaskParameters>& tasks);
+    Duration compute_blocking_time(const std::vector<Duration>& wcets);
+};
 
-### C7: Testing Requirements
+class EDFPolicy : public SchedulingPolicy {
+public:
+    std::optional<ExecutionRequest> select_next(
+        const std::vector<ExecutionRequest>& pending
+    ) override;
 
-Minimum 70% line coverage. Critical paths (scheduling, memory management) require 80%+ coverage.
+    void add_model(ModelID model, const WCETProfile& profile) override;
+    void remove_model(ModelID model) override;
 
-### C8: Static Analysis
+private:
+    std::map<ModelID, WCETProfile> profiles_;
+};
+```
 
-All code passes clang-tidy and cppcheck with project configuration. No compiler warnings.
+### Exit Criteria
+
+| Criterion | Verification Method |
+|-----------|-------------------|
+| WCET is conservative | Actual execution ≤ predicted in 99.9% of cases |
+| Admission is correct | Admitted models never miss deadlines |
+| EDF outperforms FIFO | Measurable utilisation improvement |
+| Scheduling is fast | Decision latency < 100 μs |
+| Decisions are traceable | 100% reconstructible from trace |
+| Tests pass | >80% coverage (critical path) |
+
+### Learning Outcomes
+
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Real-Time Systems | RMS, EDF, schedulability analysis, response-time analysis |
+| Statistics | Confidence intervals, outlier detection, safety margins |
+| Algorithm Design | Priority queues, deadline sorting, feasibility testing |
+| GPU Systems | Non-preemptive scheduling, contention effects |
+
+### Research Questions to Explore
+
+1. How does non-preemptive blocking time affect schedulability?
+2. What safety margins are needed for GPU WCET?
+3. How does thermal throttling affect guarantees?
+
+### References
+
+- Liu & Layland (1973): Rate-Monotonic Scheduling
+- George et al. (1996): Non-preemptive scheduling
+- REEF (SOSP'23): GPU scheduling for real-time
+- Clockwork (OSDI'20): Predictable inference serving
+
+---
+
+## Phase 4: Observability & Validation
+
+### Duration Estimate
+
+2-3 weeks
+
+### Objective
+
+Provide full traceability, validate determinism claims with real workloads, and produce performance case studies.
+
+### Deliverables
+
+| Component | Description |
+|-----------|-------------|
+| `TraceCollector` | Structured event collection |
+| `MetricsAggregator` | Per-model resource utilisation |
+| `AuditTrail` | Scheduling decision rationale |
+| Export Adapters | Perfetto, JSON, custom formats |
+| Case Studies | Multi-model performance benchmarks |
+| Documentation | Architecture, API, benchmarks |
+
+### Technical Specifications
+
+```cpp
+struct TraceEvent {
+    std::string event_type;
+    std::string component;
+    std::string rationale;
+    Timestamp timestamp;
+    Duration duration;
+    std::map<std::string, std::string> attributes;
+};
+
+class TraceCollector {
+public:
+    void record(TraceEvent event);
+
+    std::vector<TraceEvent> query(
+        std::optional<Timestamp> start,
+        std::optional<Timestamp> end,
+        std::optional<std::string> event_type
+    );
+
+    void export_json(const std::string& path);
+    void export_perfetto(const std::string& path);
+};
+```
+
+### Exit Criteria
+
+| Criterion | Verification Method |
+|-----------|-------------------|
+| Decisions are reconstructible | 100% from trace alone |
+| Determinism is validated | Latency CV < 5% under multi-model load |
+| Case studies complete | 3+ models with bounded latency |
+| Architecture is understandable | Senior engineer review < 2 hours |
+| Documentation is complete | README, API docs, benchmarks |
+
+### Learning Outcomes
+
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Observability | Tracing, metrics, structured logging |
+| Performance Analysis | Benchmarking, profiling, regression testing |
+| Technical Writing | Documentation, architecture description |
+| Validation | Experimental design, statistical significance |
+
+---
+
+## Phase 5: Integration & Polish
+
+### Duration Estimate
+
+3-4 weeks
+
+### Objective
+
+Integrate real inference backends, polish the codebase, and prepare for community release.
+
+### Deliverables
+
+| Component | Description |
+|-----------|-------------|
+| `TensorRTBackend` | Real TensorRT integration |
+| `TVMBackend` | TVM Runtime integration |
+| `ONNXBackend` | ONNX Runtime integration |
+| Jetson Optimisation | Orin-specific tuning |
+| Example Applications | Demo workloads |
+| Community Preparation | Contributing guide, issue templates |
+
+### Exit Criteria
+
+| Criterion | Verification Method |
+|-----------|-------------------|
+| Real backends work | Inference with actual models |
+| Jetson validation | Tests pass on Orin hardware |
+| Examples run | Demo application documented |
+| Community ready | CONTRIBUTING.md, issue templates |
+
+### Learning Outcomes
+
+| Skill Area | Specific Skills |
+|------------|----------------|
+| Integration | API design, FFI, error handling |
+| Platform Expertise | Jetson architecture, CUDA optimisation |
+| Open Source | Community building, contribution workflows |
+| Project Management | Release planning, documentation |
+
+---
+
+## Cross-Phase Requirements
+
+These requirements apply to ALL phases:
+
+### Code Quality
+
+| Requirement | Verification |
+|-------------|-------------|
+| RAII for all resources | Code review |
+| All CUDA calls checked | Static analysis |
+| No compiler warnings | Build log |
+| Clang-tidy clean | clang-tidy run |
+| Cppcheck clean | cppcheck run |
+
+### Testing
+
+| Requirement | Verification |
+|-------------|-------------|
+| Unit test coverage >70% | gcov/llvm-cov |
+| Critical path coverage >80% | gcov/llvm-cov |
+| Integration tests pass | CI pipeline |
+| Memory sanitiser pass | ASan, MSan |
+
+### Documentation
+
+| Requirement | Verification |
+|-------------|-------------|
+| API documentation | Doxygen/Sphinx |
+| Architecture decisions | ADRs in docs/ |
+| Code comments | Review |
+| README up to date | Manual |
 
 ---
 
@@ -229,52 +567,71 @@ All code passes clang-tidy and cppcheck with project configuration. No compiler 
 
 The roadmap is complete when ALL of the following are satisfied:
 
-1. **Functional Completeness:** All phase exit criteria met and verified
-2. **Architectural Integrity:** System demonstrates clean 5-layer separation (CUDA abstraction, context isolation, memory orchestration, scheduling, observability are independently testable)
-3. **Determinism Validation:** Latency distributions are unimodal with < 5% coefficient of variation under multi-model workloads
-4. **Scheduling Guarantees:** Admission control correctly prevents deadline violations; schedulability analysis is provably correct
-5. **Explainability Validation:** Scheduling decisions are traceable and reconstructible from logs
-6. **Orchestration Value:** Cross-model memory sharing and deterministic scheduling provide measurable improvement over naive per-model execution
-7. **Documentation Completeness:** Architecture understandable without code inspection
-8. **Demonstrability:** System can be presented in 30-minute technical talk without apology
+### Functional Completeness
 
-**Verification Approach:** Conduct formal review with checklist. Each criterion requires explicit evidence (test results, profiling data, peer review feedback).
+- [ ] All phase exit criteria met and verified
+- [ ] MVP scope delivered
+- [ ] Real inference backends integrated
+
+### Architectural Integrity
+
+- [ ] Layer separation is clean
+- [ ] No cross-layer violations
+- [ ] Each layer independently testable
+
+### Determinism Validation
+
+- [ ] Latency CV < 5% under multi-model load
+- [ ] Admission control prevents deadline violations
+- [ ] Schedulability analysis is correct
+
+### Community Readiness
+
+- [ ] Documentation complete
+- [ ] Examples working
+- [ ] Contributing guide published
+
+### Personal Growth
+
+- [ ] Research contribution identified
+- [ ] Learning outcomes achieved
+- [ ] Portfolio-ready project
 
 ---
 
-## Roadmap Governance
+## Risk Mitigation
 
-### Authority Hierarchy
+### Risk: Phase Takes Longer Than Expected
 
-1. `CLAUDE.md` - Agent operating constraints (highest authority)
-2. `CONTRIBUTING.md` - Contribution standards
-3. `docs/OUTLOOK.md` - Architectural philosophy
-4. This `ROADMAP.md` - Execution sequence
-5. Phase-specific documents (`docs/roadmap/phase-N-*.md`) - Detailed phase specifications
+**Mitigation**: Each phase has minimum viable deliverables. If time-constrained, reduce scope to MVP, not quality.
 
-### Modification Policy
+### Risk: Technical Blocker Discovered
 
-Roadmap modifications require explicit justification:
-- **Adding phases:** Only if new architectural requirement discovered
-- **Reordering phases:** Only if dependency analysis reveals error
-- **Removing phases:** Only if objective becomes redundant
+**Mitigation**: Document blockers in phase notes. Seek community input if stuck. Consider scope adjustment.
 
-Convenience is not justification. Architectural necessity is.
+### Risk: Hardware Limitations
 
-### Session Continuity
+**Mitigation**: Test on both server GPU and Jetson. Use mock backends for development. Cloud GPU for CI.
 
-For agent-driven work:
-- Each session begins by reading active phase document
-- Session ends with progress update in phase document or session log
-- No implicit memory across sessions—all state externalised
+---
+
+## Session Continuity
+
+For development sessions:
+
+1. **Start**: Read current phase document, review last session's progress
+2. **Work**: Focus on exit criteria, document decisions
+3. **End**: Update phase notes, commit progress, update TODOs
 
 ---
 
 ## References
 
-- **Architectural Philosophy:** `docs/OUTLOOK.md`
-- **Agent Constraints:** `CLAUDE.md`
-- **Contribution Standards:** `CONTRIBUTING.md`
-- **Phase Details:** `docs/roadmap/phase-{0,1,2,3,4}-*.md`
-- **System Architecture:** `docs/ARCHITECTURE.md`
-- **Terminology:** `docs/TERMINOLOGY.md`
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Vision**: [OUTLOOK.md](OUTLOOK.md)
+- **MVP Definition**: [MVP.md](MVP.md)
+- **Terminology**: [TERMINOLOGY.md](TERMINOLOGY.md)
+
+---
+
+**"The roadmap is not a schedule. It is a commitment to depth."**

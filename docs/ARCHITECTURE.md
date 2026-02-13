@@ -1,472 +1,666 @@
 # AegisRT Architecture
 
-## Overview
+## Design Philosophy
 
-AegisRT is a **GPU resource orchestrator** for deterministic, multi-model edge AI inference. It sits above existing inference runtimes (TensorRT, TVM Runtime, ONNX Runtime) and manages the GPU resources they compete for: CUDA streams, device memory, compute time, and scheduling priority.
+AegisRT is built on three core principles that differentiate it from existing runtimes:
 
-The system decomposes into five primary layers, each with explicit responsibilities and minimal cross-layer coupling.
+### Principle 1: Orchestration Over Execution
 
-**Design Philosophy:** Separation of concerns, explicit resource ownership, real-time scheduling theory, and observability as first-class constraint.
+AegisRT does not execute kernels. It orchestrates existing runtimes (TensorRT, TVM, ONNX Runtime) by controlling **when** and **with what resources** they execute. This separation enables:
 
-**Key Distinction:** AegisRT does not execute kernels or compile models. It orchestrates existing runtimes, providing deterministic scheduling, memory management, context isolation, and observability that no individual runtime provides on its own.
+- Independent evolution of scheduling policy without touching execution
+- Leveraging mature runtimes for what they do best (kernel optimisation)
+- Focusing development effort on the unsolved problem (deterministic orchestration)
+
+### Principle 2: Formal Guarantees Over Best-Effort
+
+AegisRT provides **provable** latency bounds through:
+
+- Formal schedulability analysis derived from real-time systems theory
+- Conservative WCET (Worst-Case Execution Time) estimation with contention awareness
+- Admission control that rejects work rather than degrading silently
+
+### Principle 3: Observability as a Contract
+
+Every scheduling decision, resource allocation, and execution event is traceable. Without observability, determinism claims cannot be verified. Tracing is not optional—it is part of the system contract.
 
 ---
 
-## System Position
+## System Position in the Stack
 
 ```
-+---------------------------------------------------------------+
-|                    Application Layer                          |
-|  (Autonomous Driving Pipeline, Robotics, Edge AI Services)    |
-+---------------------------------------------------------------+
-                              |
-                              v
-+---------------------------------------------------------------+
-|                    AegisRT Orchestrator                       |
-|  Layer 5: Observability (tracing, metrics, audit)             |
-|  Layer 4: Scheduling Policy (RMS, EDF, admission control)     |
-|  Layer 3: Cross-Model Memory Orchestration                    |
-|  Layer 2: Execution Context Isolation                         |
-|  Layer 1: CUDA Runtime Abstraction                            |
-+---------------------------------------------------------------+
-                         |         |
-                    +----v---+ +---v------+
-                    |  TRT   | | TVM RT   |  <-- Existing Runtimes
-                    +--------+ +----------+
-                         |         |
-                    +----v---------v-----+
-                    |   CUDA Runtime     |
-                    +--------------------+
++---------------------------------------------------------------------+
+|                        Application Layer                            |
+|        (Autonomous Driving Pipeline, Robotics, Edge AI Services)    |
++-------------------------------+-------------------------------------+
+                                |
++-------------------------------v-------------------------------------+
+|                           AegisRT                                   |
+|                                                                     |
+|  +---------------------------------------------------------------+  |
+|  |               Layer 3: Deterministic Scheduler                |  |
+|  |                                                               |  |
+|  |  +-------------+ +-------------+ +-------------------------+  |  |
+|  |  | WCETProfiler| | Admission   | | SchedulingPolicy        |  |  |
+|  |  |             | | Controller  | | (FIFO, RMS, EDF, Custom)|  |  |
+|  |  | Profiling   | | Formal      | |                         |  |  |
+|  |  | Statistical | | Analysis    | | Priority/Deadline-based |  |  |
+|  |  +-------------+ +-------------+ +-------------------------+  |  |
+|  +-----------------------------+---------------------------------+  |
+|                                |                                    |
+|  +-----------------------------v---------------------------------+  |
+|  |             Layer 2: Resource Orchestration                   |  |
+|  |                                                               |  |
+|  |  +-------------+ +-------------+ +-------------------------+  |  |
+|  |  | Memory      | | Execution   | |    RuntimeBackend       |  |  |
+|  |  | Orchestrator| | Context     | | (Abstract Interface)    |  |  |
+|  |  |             | |             | |                         |  |  |
+|  |  | Lifetime-   | | Per-Model   | | +-----+ +-----+ +-----+ |  |  |
+|  |  | Aware       | | Budgets &   | | | TRT | | TVM | |ONNX | |  |  |
+|  |  | Sharing     | | Isolation   | | +-----+ +-----+ +-----+ |  |  |
+|  |  +-------------+ +-------------+ +-------------------------+  |  |
+|  +-----------------------------+---------------------------------+  |
+|                                |                                    |
+|  +-----------------------------v---------------------------------+  |
+|  |          Layer 1: CUDA Abstraction & Observability            |  |
+|  |                                                               |  |
+|  |   +-------------+ +-------------+ +------------------------+  |  |
+|  |   | CUDA RAII   | | Device      | | TraceCollector         |  |  |
+|  |   | Wrappers    | | Capability  | |                        |  |  |
+|  |   |             | | Discovery   | | Structured Event Logs  |  |  |
+|  |   | Stream      | |             | | Decision Rationale     |  |  |
+|  |   | Event       | | SM Count    | | Performance Metrics    |  |  |
+|  |   | Memory      | | Memory BW   | |                        |  |  |
+|  |   +-------------+ +-------------+ +------------------------+  |  |
+|  +---------------------------------------------------------------+  |
++--------------------------------+-----------------------------------+
+                                 |
+                     +-----------v-----------+
+                     |    CUDA Runtime API   |
+                     +-----------------------+
 ```
 
 ---
 
-## System Decomposition
+## Layer 1: CUDA Abstraction & Observability
 
-### Layer 1: CUDA Runtime Abstraction
+### Purpose
 
-**Responsibility:** Wrap raw CUDA API in RAII objects with explicit ownership semantics.
+Provide safe, RAII-managed access to CUDA resources with full traceability of all operations.
 
-**Components:**
-- `CudaContext`: Device selection and initialisation
-- `CudaStream`: RAII wrapper for `cudaStream_t`
-- `CudaEvent`: RAII wrapper for `cudaEvent_t`
-- `CUDA_CHECK` macro: Error checking for all CUDA API calls
+### Components
 
-**Key Invariants:**
-- No raw CUDA handles escape this layer
-- All resources managed via RAII (no manual cleanup)
-- All CUDA calls checked for errors (no silent failures)
+#### CUDA RAII Wrappers
 
-**Dependencies:** CUDA Runtime API only
+```cpp
+// All CUDA resources are managed through RAII
+class CudaStream {
+public:
+    CudaStream();                           // Creates stream
+    ~CudaStream();                          // Destroys stream
+    CudaStream(CudaStream&&) noexcept;      // Move-only
+    CudaStream& operator=(CudaStream&&);
+    
+    cudaStream_t handle() const;
+    void synchronize();
+    
+private:
+    cudaStream_t stream_;
+};
 
----
+class CudaEvent {
+public:
+    CudaEvent(unsigned int flags = 0);
+    ~CudaEvent();
+    
+    void record(const CudaStream& stream);
+    void synchronize();
+    float elapsedSince(const CudaEvent& start) const;
+    
+private:
+    cudaEvent_t event_;
+};
+```
 
-### Layer 2: Execution Context Isolation
+#### Device Capability Discovery
 
-**Responsibility:** Provide per-model execution contexts with hard resource budgets and fault isolation.
+```cpp
+struct DeviceCapabilities {
+    int sm_count;
+    size_t total_memory;
+    size_t shared_memory_per_block;
+    int max_threads_per_block;
+    int compute_capability_major;
+    int compute_capability_minor;
+    int memory_clock_khz;
+    int memory_bus_width;
+    
+    // Derived metrics
+    size_t theoretical_memory_bandwidth() const;
+    int theoretical_flops() const;
+};
 
-**Components:**
-- `ExecutionContext`: Per-model resource container (streams, memory budget, fault boundary)
-- `ResourceBudget`: Hard limits on memory, stream count, and compute time per model
-- `FaultBoundary`: Isolates CUDA errors to the originating context
-- `RuntimeBackend`: Abstract interface wrapping existing runtimes (TensorRT, TVM, etc.)
+class DeviceContext {
+public:
+    static DeviceCapabilities query(int device_id = 0);
+    static std::vector<DeviceCapabilities> query_all();
+};
+```
 
-**Key Invariants:**
-- Each model executes within its own context (no shared mutable state)
-- Resource budgets are hard limits (exceeding triggers explicit rejection)
-- One model's failure does not propagate to other models
-- Runtime backends are opaque (AegisRT controls resources, not execution internals)
+#### TraceCollector
 
-**Dependencies:** Layer 1 (CUDA Runtime Abstraction)
+```cpp
+struct TraceEvent {
+    std::string event_type;      // "schedule", "execute", "allocate", etc.
+    std::string component;       // "scheduler", "memory", "context"
+    std::string rationale;       // Why this decision was made
+    Timestamp timestamp;
+    Duration duration;
+    std::map<std::string, std::string> attributes;
+};
 
----
+class TraceCollector {
+public:
+    void record(TraceEvent event);
+    std::vector<TraceEvent> query(
+        std::optional<Timestamp> start,
+        std::optional<Timestamp> end,
+        std::optional<std::string> event_type
+    );
+    void export_json(const std::string& path);
+    void export_perfetto(const std::string& path);
+};
+```
 
-### Layer 3: Cross-Model Memory Orchestration
+### Invariants
 
-**Responsibility:** Manage device memory across multiple models with lifetime-aware sharing and explicit pressure handling.
-
-**Components:**
-- `MemoryOrchestrator`: Coordinates memory allocation across all execution contexts
-- `LifetimeAnalyser`: Computes tensor lifetimes and identifies sharing opportunities
-- `MemoryPlanner`: Computes static memory allocation plans from cross-model analysis
-- `PressureHandler`: Explicit policies for memory pressure (shed, reject, compact)
-
-**Key Invariants:**
-- Memory allocation occurs only during planning (not during execution)
-- Cross-model sharing is computed statically (no runtime heuristics)
-- Pressure handling uses explicit policies (no hidden eviction)
-- Peak memory usage is statically computable and bounded
-
-**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Execution Context Isolation)
-
----
-
-### Layer 4: Scheduling Policy (Core Differentiator)
-
-**Responsibility:** Decide when and with what resources to execute submitted workloads, grounded in real-time scheduling theory.
-
-**Components:**
-- `Scheduler`: Central orchestration component with admission control
-- `SchedulingPolicy`: Abstract interface for RT policies (RMS, EDF, Priority)
-- `AdmissionController`: Determines if a new model can be admitted without violating existing guarantees
-- `WCETProfiler`: Maintains worst-case execution time profiles per model
-- `StreamPool`: Manages fixed pool of CUDA streams
-- `OrchestrationLoop`: Main scheduling loop (runs on dedicated thread)
-
-**Key Invariants:**
-- Scheduling policy is explicit, swappable, and grounded in RT theory
-- Admission control runs schedulability analysis before accepting new workloads
-- WCET bounds are maintained and updated via profiling
-- All scheduling decisions are traceable with rationale
-- Stream allocation is deterministic
-
-**Dependencies:** Layer 1 (CUDA Runtime Abstraction), Layer 2 (Execution Context Isolation), Layer 3 (Cross-Model Memory Orchestration)
-
----
-
-### Layer 5: Observability
-
-**Responsibility:** Provide full traceability of all scheduling decisions, resource allocations, and execution events.
-
-**Components:**
-- `TraceCollector`: Structured event collection for all layers
-- `MetricsAggregator`: Per-model, per-stream, per-pool resource utilisation
-- `AuditTrail`: Scheduling decision log with rationale (why was model X delayed?)
-- `ExportAdapter`: Integration with standard tooling (Perfetto, NVIDIA Nsight)
-
-**Key Invariants:**
-- Every scheduling decision is logged with sufficient context for reconstruction
-- Tracing does not affect execution correctness (only performance)
-- Metrics are exportable in standard formats
-- Observability is not optional -- it is part of the system contract
-
-**Dependencies:** All layers (cross-cutting concern)
+- **No raw CUDA handles escape this layer** — All resources managed through RAII wrappers
+- **All CUDA calls are checked** — No silent failures; errors propagate with context
+- **All operations are traceable** — TraceCollector receives events from all components
 
 ---
 
-## Component Diagram
+## Layer 2: Resource Orchestration
+
+### Purpose
+
+Manage execution contexts, memory allocation, and runtime backends with clear ownership and isolation.
+
+### Components
+
+#### Execution Context
+
+```cpp
+struct ResourceBudget {
+    size_t memory_limit;      // Maximum device memory
+    int stream_limit;         // Maximum concurrent streams
+    Duration compute_budget;  // Maximum compute time per period
+};
+
+class ExecutionContext {
+public:
+    ExecutionContext(
+        ModelID model,
+        ResourceBudget budget,
+        std::unique_ptr<RuntimeBackend> backend
+    );
+    
+    ModelID model() const;
+    const ResourceBudget& budget() const;
+    RuntimeBackend& backend();
+    
+    // Resource tracking
+    size_t memory_used() const;
+    int streams_in_use() const;
+    bool can_allocate(size_t bytes) const;
+    
+    // Fault isolation
+    bool has_error() const;
+    std::optional<CudaError> last_error() const;
+    void clear_error();
+
+private:
+    ModelID model_;
+    ResourceBudget budget_;
+    std::unique_ptr<RuntimeBackend> backend_;
+    std::atomic<size_t> memory_used_{0};
+    std::atomic<int> streams_in_use_{0};
+    std::optional<CudaError> last_error_;
+};
+```
+
+#### Memory Orchestrator
+
+```cpp
+struct TensorLifetime {
+    TensorID tensor;
+    Timestamp start;    // When tensor is first written
+    Timestamp end;      // When tensor is last read
+    size_t size;
+};
+
+struct SharingOpportunity {
+    TensorID tensor_a;
+    TensorID tensor_b;
+    size_t shared_memory;  // Memory saved by sharing
+};
+
+class MemoryOrchestrator {
+public:
+    // Planning phase (occurs at model admission)
+    AllocationPlan plan(
+        const std::vector<ExecutionContext*>& contexts,
+        const std::vector<TensorLifetime>& lifetimes
+    );
+    
+    // Execution phase
+    Result<MemoryBinding> bind(
+        ModelID model,
+        const AllocationPlan& plan
+    );
+    
+    void release(ModelID model);
+    
+    // Pressure handling
+    void handle_pressure(PressurePolicy policy);
+    
+    // Observability
+    size_t peak_usage() const;
+    size_t current_usage() const;
+
+private:
+    std::unordered_map<ModelID, MemoryBinding> bindings_;
+    std::unique_ptr<DeviceMemoryPool> pool_;
+};
+```
+
+#### Runtime Backend (Abstract Interface)
+
+```cpp
+class RuntimeBackend {
+public:
+    virtual ~RuntimeBackend() = default;
+    
+    // Resource estimation
+    virtual size_t estimate_memory() const = 0;
+    virtual std::vector<TensorLifetime> estimate_lifetimes() const = 0;
+    
+    // Execution
+    virtual Result<void> execute(
+        const CudaStream& stream,
+        const MemoryBinding& memory
+    ) = 0;
+    
+    // Status
+    virtual bool is_valid() const = 0;
+    virtual std::string runtime_name() const = 0;
+};
+
+// Concrete implementations
+class TensorRTBackend : public RuntimeBackend { /* ... */ };
+class TVMBackend : public RuntimeBackend { /* ... */ };
+class ONNXBackend : public RuntimeBackend { /* ... */ };
+```
+
+### Invariants
+
+- **Each model has exactly one execution context** — No shared mutable state between models
+- **Resource budgets are hard limits** — Exceeding triggers explicit rejection, not silent degradation
+- **One model's failure does not propagate** — Fault boundaries isolate errors
+- **Memory allocation occurs at planning time** — No runtime allocation surprises
+
+---
+
+## Layer 3: Deterministic Scheduler (Core Contribution)
+
+### Purpose
+
+Provide real-time scheduling with formal admission control, adapting classical RT theory for GPU execution constraints.
+
+### The GPU Scheduling Challenge
+
+Classical real-time scheduling makes assumptions that GPUs violate:
 
 ```
-+---------------------------------------------------------------+
-|                    Layer 5: Observability                     |
-|                                                               |
-|  +------------------+  +------------------+  +--------------+ |
-|  | TraceCollector   |  | MetricsAggregator|  | AuditTrail   | |
-|  | (Structured)     |  | (Per-Model)      |  | (Decisions)  | |
-|  +------------------+  +------------------+  +--------------+ |
-+---------------------------------------------------------------+
-                              |
-                              v
-+---------------------------------------------------------------+
-|              Layer 4: Scheduling Policy (RT Theory)           |
-|                                                               |
-|  +------------------+  +------------------+  +--------------+ |
-|  | Scheduler        |  | SchedulingPolicy |  | Admission    | |
-|  | (Orchestration)  |  | (RMS, EDF)       |  | Controller   | |
-|  +------------------+  +------------------+  +--------------+ |
-|  +------------------+  +------------------+                   |
-|  | WCETProfiler     |  | StreamPool       |                   |
-|  | (Profiling)      |  | (Fixed Pool)     |                   |
-|  +------------------+  +------------------+                   |
-+---------------------------------------------------------------+
-                              |
-                              v
-+---------------------------------------------------------------+
-|           Layer 3: Cross-Model Memory Orchestration           |
-|                                                               |
-|  +------------------+  +------------------+  +--------------+ |
-|  | MemoryOrchestrator| | LifetimeAnalyser |  | Pressure     | |
-|  | (Cross-Model)    |  | (Sharing)        |  | Handler      | |
-|  +------------------+  +------------------+  +--------------+ |
-+---------------------------------------------------------------+
-                              |
-                              v
-+---------------------------------------------------------------+
-|             Layer 2: Execution Context Isolation              |
-|                                                               |
-|  +------------------+  +------------------+  +--------------+ |
-|  | ExecutionContext |  | ResourceBudget   |  | Runtime      | |
-|  | (Per-Model)      |  | (Hard Limits)    |  | Backend      | |
-|  +------------------+  +------------------+  +--------------+ |
-+---------------------------------------------------------------+
-                              |
-                              v
-+---------------------------------------------------------------+
-|                Layer 1: CUDA Runtime Abstraction              |
-|                                                               |
-|  +------------------+  +------------------+  +--------------+ |
-|  | CudaContext      |  | CudaStream       |  | CudaEvent    | |
-|  | (Device Init)    |  | (RAII Wrapper)   |  | (RAII)       | |
-|  +------------------+  +------------------+  +--------------+ |
-|  +------------------+  +------------------+                   |
-|  | DeviceMemoryPool |  | DeviceBuffer     |                   |
-|  | (Allocation)     |  | (RAII Wrapper)   |                   |
-|  +------------------+  +------------------+                   |
-+---------------------------------------------------------------+
-                              |
-                              v
-              +-------------------------------+
-              | Existing Runtimes             |
-              | (TensorRT, TVM RT, ONNX RT)   |
-              +-------------------------------+
-                              |
-                              v
-                    +---------------------+
-                    | CUDA Runtime API    |
-                    +---------------------+
++---------------------------------------------------------------------+
+|                    Classical RT Assumptions                         |
++---------------------------------------------------------------------+
+| 1. Tasks are preemptible           -> GPUs: Kernels are NOT         |
+| 2. WCET is static and known        -> GPUs: Varies with contention  |
+| 3. Single sequential processor     -> GPUs: Massively parallel      |
+| 4. Tasks are independent           -> GPUs: Share memory bandwidth  |
++---------------------------------------------------------------------+
 ```
+
+AegisRT addresses each violation:
+
+| Violation | AegisRT Adaptation |
+|-----------|-------------------|
+| Non-preemptible kernels | Non-preemptive EDF scheduling analysis |
+| Variable WCET | Conservative statistical profiling with safety margins |
+| Parallel execution | Model sequentialisation with resource isolation |
+| Shared resources | Contention-aware WCET estimation |
+
+### Components
+
+#### WCET Profiler
+
+```cpp
+struct WCETProfile {
+    Duration worst_case;       // Conservative upper bound
+    Duration average_case;     // For capacity planning
+    Duration best_case;        // Lower bound
+    double contention_factor;  // How much slower under load
+    int sample_count;          // Statistical confidence
+};
+
+class WCETProfiler {
+public:
+    // Profiling
+    WCETProfile profile(
+        ExecutionContext& context,
+        int min_samples = 100,
+        double confidence_level = 0.99
+    );
+    
+    // Contention-aware profiling
+    WCETProfile profile_under_load(
+        ExecutionContext& context,
+        const std::vector<ExecutionContext*>& background_contexts
+    );
+    
+    // Statistical methods
+    Duration compute_wcet(
+        const std::vector<Duration>& samples,
+        double confidence_level,
+        double safety_margin = 1.5  // 50% safety margin
+    );
+};
+```
+
+#### Admission Controller
+
+```cpp
+struct AdmissionRequest {
+    ModelID model;
+    WCETProfile wcet;
+    Period period;          // For periodic tasks
+    Deadline deadline;      // Relative deadline
+    Priority priority;      // For priority-based scheduling
+};
+
+struct AdmissionResult {
+    bool admitted;
+    std::string reason;     // If rejected, why
+    double utilisation;     // System utilisation after admission
+    Duration worst_case_response_time;  // Predicted WCRT
+};
+
+class AdmissionController {
+public:
+    AdmissionResult analyse(
+        const AdmissionRequest& request,
+        const std::vector<ExecutionContext*>& existing_contexts
+    );
+    
+    // Schedulability tests
+    bool test_rms_schedulability(
+        const std::vector<std::pair<Duration, Period>>& tasks
+    );
+    
+    bool test_edf_schedulability(
+        const std::vector<std::pair<Duration, Deadline>>& tasks
+    );
+    
+    // Non-preemptive analysis
+    Duration compute_blocking_time(
+        const std::vector<Duration>& all_wcets,
+        Duration new_task_wcet
+    );
+};
+```
+
+#### Scheduling Policy
+
+```cpp
+struct ExecutionRequest {
+    ModelID model;
+    Priority priority;
+    Deadline deadline;
+    std::optional<Timestamp> earliest_start;
+};
+
+class SchedulingPolicy {
+public:
+    virtual ~SchedulingPolicy() = default;
+    
+    virtual void add_model(ModelID model, const WCETProfile& profile) = 0;
+    virtual void remove_model(ModelID model) = 0;
+    
+    virtual std::optional<ExecutionRequest> select_next(
+        const std::vector<ExecutionRequest>& pending
+    ) = 0;
+    
+    virtual std::string policy_name() const = 0;
+};
+
+// FIFO baseline
+class FIFOPolicy : public SchedulingPolicy { /* ... */ };
+
+// Rate-Monotonic Scheduling
+class RMSPolicy : public SchedulingPolicy { /* ... */ };
+
+// Earliest Deadline First
+class EDFPolicy : public SchedulingPolicy { /* ... */ };
+
+// Priority-based
+class PriorityPolicy : public SchedulingPolicy { /* ... */ };
+```
+
+#### Scheduler (Orchestration)
+
+```cpp
+class Scheduler {
+public:
+    Scheduler(
+        std::unique_ptr<SchedulingPolicy> policy,
+        std::unique_ptr<AdmissionController> admission,
+        std::unique_ptr<StreamPool> streams,
+        TraceCollector& tracer
+    );
+    
+    // Model management
+    Result<ModelID> admit(
+        std::unique_ptr<ExecutionContext> context,
+        const AdmissionRequest& request
+    );
+    
+    void evict(ModelID model);
+    
+    // Execution
+    RequestID submit(
+        ModelID model,
+        Priority priority = Priority::normal(),
+        std::optional<Deadline> deadline = std::nullopt
+    );
+    
+    // Lifecycle
+    void start();   // Start orchestration loop
+    void stop();    // Stop orchestration loop
+    
+    // Observability
+    SchedulerMetrics metrics() const;
+
+private:
+    void orchestration_loop_();
+    
+    std::unique_ptr<SchedulingPolicy> policy_;
+    std::unique_ptr<AdmissionController> admission_;
+    std::unique_ptr<StreamPool> streams_;
+    std::unique_ptr<MemoryOrchestrator> memory_;
+    TraceCollector& tracer_;
+    
+    ConcurrentQueue<ExecutionRequest> pending_;
+    std::unordered_map<ModelID, ExecutionContext> contexts_;
+};
+```
+
+### Schedulability Analysis
+
+#### Rate-Monotonic Scheduling (RMS)
+
+For periodic tasks with implicit deadlines (deadline = period):
+
+Utilisation Bound: $U \leq n (2^{\frac{1}{n}} - 1)$.
+
+Where:
+- $U = \sum{\frac{C_i}{T_i}}$ for all tasks
+- $C_i$ = Worst-case execution time
+- $T_i$ = Period
+- $n$ = Number of tasks
+
+For $n \rightarrow \infty : U \leq ln(2) \approx 0.693$
+
+#### Earliest Deadline First (EDF)
+
+For tasks with arbitrary deadlines:
+
+
+Utilisation Bound: $U = \sum{\frac{C_i}{D_i}} \leq 1$
+
+Where:
+- $D_i$ = Relative deadline
+
+EDF can achieve 100% utilisation, but requires:
+- Preemption (not available on GPU)
+- Accurate WCET bounds
+
+#### Non-Preemptive Adaptation
+
+For non-preemptive GPU execution, we must account for **blocking time**:
+
+
+Blocking Time: $B_i = \max(C_j)$ for all $j$ with lower priority
+
+Response Time Analysis:
+$R_i = C_i + B_i + \sum{\frac{R_i}{T_j}} \cdot C_j$ (for all $j$ with higher priority)
+
+Iterate until $R_i$ converges or $R_i > D_i$ (deadline miss)
+
 
 ---
 
 ## Data Flow
 
-### Model Registration to Execution
+### Model Admission Flow
 
 ```
-1. Pre-Compiled Model (TensorRT engine, TVM module, etc.)
+1. Load pre-compiled model (TensorRT engine, TVM module, etc.)
         |
         v
-2. RuntimeBackend wraps model (opaque execution handle)
+2. Create RuntimeBackend wrapper
         |
         v
-3. ExecutionContext created (resource budget, fault boundary)
+3. WCETProfiler profiles model under various contention levels
         |
         v
-4. WCETProfiler profiles model (execution time distribution)
+4. Construct AdmissionRequest with WCET profile and timing requirements
         |
         v
-5. AdmissionController checks schedulability (can this model be added?)
+5. AdmissionController runs schedulability analysis
+        |
+        +-- Rejected -> Return reason to caller
         |
         v
-6. MemoryOrchestrator plans cross-model memory allocation
+6. Create ExecutionContext with resource budget
         |
         v
-7. Scheduler admits model to scheduling pool
+7. MemoryOrchestrator plans cross-model memory allocation
+        |
+        v
+8. Scheduler admits model to scheduling pool
+        |
+        v
+9. TraceCollector records admission event with rationale
 ```
 
-### Per-Invocation Execution
+### Per-Invocation Execution Flow
 
 ```
-1. Execution request arrives (model ID, priority, deadline)
+1. Application submits ExecutionRequest (model, priority, deadline)
         |
         v
-2. Scheduler selects next request (policy-driven: RMS, EDF)
+2. Scheduler enqueues request in pending queue
         |
         v
-3. StreamPool allocates stream within context budget
+3. OrchestrationLoop dequeues request (blocking)
         |
         v
-4. MemoryOrchestrator binds memory within context budget
+4. SchedulingPolicy selects next request to execute
         |
         v
-5. RuntimeBackend executes model on allocated resources
+5. StreamPool allocates stream within context budget
         |
         v
-6. TraceCollector records execution events
+6. MemoryOrchestrator binds memory within context budget
         |
         v
-7. Completion callback invoked, stream released
+7. RuntimeBackend.execute() called with stream and memory
+        |
+        v
+8. TraceCollector records execution event
+        |
+        v
+9. Completion callback invoked
+        |
+        v
+10. StreamPool releases stream
+        |
+        v
+11. TraceCollector records completion event
 ```
-
-**Key Observation:** Model registration (expensive, once) is separated from per-invocation execution (cheap, repeated). Admission control ensures that once a model is admitted, its latency guarantees are maintained.
-
----
-
-## Control Flow
-
-### Submission to Completion
-
-```
-1. User submits ExecutionRequest (model ID, priority, deadline)
-        |
-        v
-2. Scheduler enqueues request (bounded queue, per-context)
-        |
-        v
-3. OrchestrationLoop dequeues request (RT policy-driven)
-        |
-        v
-4. SchedulingPolicy selects next request (RMS, EDF, Priority)
-        |
-        v
-5. AdmissionController verifies schedulability (if new model)
-        |
-        v
-6. StreamPool allocates stream within context budget
-        |
-        v
-7. MemoryOrchestrator binds memory within context budget
-        |
-        v
-8. RuntimeBackend executes model on allocated resources
-        |
-        v
-9. TraceCollector records events (scheduling decision, execution, memory)
-        |
-        v
-10. Completion callback invoked
-        |
-        v
-11. StreamPool releases stream, context budget updated
-```
-
-**Key Observation:** Scheduling decisions (steps 3-5) are decoupled from execution mechanics (step 8). The RuntimeBackend is opaque -- AegisRT controls resources, not execution internals.
-
----
-
-## Key Abstractions
-
-### ExecutionContext
-
-**Purpose:** Per-model resource container with hard budgets and fault isolation.
-
-**Interface:**
-```cpp
-class ExecutionContext {
-public:
-    ExecutionContext(ResourceBudget budget,
-                    std::unique_ptr<RuntimeBackend> backend);
-
-    const ResourceBudget& budget() const;
-    RuntimeBackend& backend();
-    bool withinBudget(size_t memoryRequest, size_t streamRequest) const;
-};
-```
-
-**Invariants:**
-- Each model has exactly one context
-- Resource budgets are immutable after creation
-- Faults are scoped to the originating context
-
----
-
-### Scheduler
-
-**Purpose:** Central orchestration component with RT scheduling and admission control.
-
-**Interface:**
-```cpp
-class Scheduler {
-public:
-    Scheduler(std::unique_ptr<SchedulingPolicy> policy,
-              std::unique_ptr<StreamPool> streams,
-              std::unique_ptr<AdmissionController> admission);
-
-    Result<ModelID> admit(std::unique_ptr<ExecutionContext> context,
-                          WCETProfile profile,
-                          Deadline deadline);
-
-    RequestID submit(ModelID model,
-                     Priority priority);
-
-    void start();  // Start orchestration loop
-    void stop();   // Stop orchestration loop
-};
-```
-
-**Invariants:**
-- Admission control runs schedulability analysis before accepting
-- Policy is injected (not hardcoded)
-- Submission is non-blocking
-- Orchestration loop runs on dedicated thread
-
----
-
-### MemoryOrchestrator
-
-**Purpose:** Cross-model memory coordination with lifetime-aware sharing.
-
-**Interface:**
-```cpp
-class MemoryOrchestrator {
-public:
-    AllocationPlan plan(const std::vector<ExecutionContext*>& contexts);
-    Result<MemoryBinding> bind(ModelID model, const AllocationPlan& plan);
-    void handlePressure(PressurePolicy policy);
-};
-
-struct AllocationPlan {
-    std::unordered_map<ModelID, std::vector<MemoryRegion>> allocations;
-    std::vector<SharingOpportunity> sharing;
-    size_t peakMemory;
-};
-```
-
-**Invariants:**
-- Planning occurs at admission time (not execution time)
-- Plan is deterministic (same inputs produce same plan)
-- Peak memory is statically computable
-- Sharing opportunities are identified and exploited automatically
-
----
-
-## Dependency Graph
-
-```
-TraceCollector, MetricsAggregator, AuditTrail  (Layer 5 - cross-cutting)
-    |
-    v (observes all layers)
-
-Scheduler
-    |
-    +---> SchedulingPolicy (RMS, EDF, Priority)
-    |
-    +---> AdmissionController
-    |           |
-    |           +---> WCETProfiler
-    |
-    +---> StreamPool
-    |
-    v
-MemoryOrchestrator
-    |
-    +---> LifetimeAnalyser
-    |
-    +---> PressureHandler
-    |
-    v
-ExecutionContext
-    |
-    +---> ResourceBudget
-    |
-    +---> RuntimeBackend (TensorRT, TVM, ONNX RT)
-    |
-    +---> FaultBoundary
-    |
-    v
-CudaContext, CudaStream, CudaEvent, DeviceMemoryPool
-    |
-    v
-CUDA Runtime API
-```
-
-**Key Observation:** Dependencies flow downward. No layer depends on layers above. Existing runtimes are wrapped as opaque backends at Layer 2.
 
 ---
 
 ## Concurrency Model
 
-### Thread Responsibilities
+### Thread Architecture
 
-**Main Thread:**
-- Model loading and graph construction
-- Submission of execution requests
-- Retrieval of results
+```
++-------------------------------------------+
+| Main Thread                               |
+|  - Model admission/eviction               |
+|  - Execution request submission           |
+|  - Result retrieval                       |
++-------------------------------------------+
+                    |
+                    | (thread-safe queue)
+                    v
++-------------------------------------------+
+| Orchestration Thread                      |
+|  - Dequeue pending requests               |
+|  - Scheduling policy evaluation           |
+|  - Stream allocation                      |
+|  - Execution dispatch                     |
+|  - Completion handling                    |
++-------------------------------------------+
+                    |
+                    | (async CUDA operations)
+                    v
++-------------------------------------------+
+| GPU Execution                             |
+|  - Kernel execution (asynchronous)        |
+|  - Memory transfers (asynchronous)        |
+|  - Event-based synchronisation            |
++-------------------------------------------+
+```
 
-**Orchestration Thread:**
-- Dequeuing requests from submission queue
-- Scheduling decisions (policy-driven)
-- Stream allocation and release
-- Dispatching execution to GPU
+### Synchronisation Strategy
 
-**GPU Threads:**
-- Kernel execution (asynchronous)
-- Event-based synchronisation
-
-**Key Invariants:**
-- No shared mutable state between threads (except submission queue, which is thread-safe)
-- GPU execution is asynchronous (no CPU-GPU synchronisation unless required)
+- **Submission Queue**: Lock-free MPMC queue for pending requests
+- **GPU Synchronisation**: CUDA events, not CPU barriers
+- **State Access**: Atomic operations for counters, mutex for complex state
+- **No Shared Mutable State**: Each thread owns its state; communication via queues
 
 ---
 
@@ -474,77 +668,33 @@ CUDA Runtime API
 
 ### Error Categories
 
-**Transient Errors:**
-- Temporary resource exhaustion (e.g., stream pool full)
-- Caller can retry
-
-**Permanent Errors:**
-- Invalid graph (e.g., unsupported operator)
-- Caller must abort
-
-**Fatal Errors:**
-- CUDA driver failure (e.g., device lost)
-- Process must terminate
+| Category | Example | Recovery |
+|----------|---------|----------|
+| Transient | Stream pool exhausted | Retry with backoff |
+| Permanent | Invalid model format | Abort and report |
+| Fatal | CUDA device lost | Process termination |
 
 ### Error Handling Pattern
 
 ```cpp
-enum class ErrorCategory { Transient, Permanent, Fatal };
+template<typename T>
+class Result {
+public:
+    bool is_ok() const;
+    bool is_error() const;
+    const T& value() const;
+    const Error& error() const;
+    
+private:
+    std::variant<T, Error> data_;
+};
 
 struct Error {
     ErrorCategory category;
     std::string message;
-    std::string context;  // File, line, function
+    std::string component;
+    std::string context;  // File:line:function
 };
-
-// Example usage
-Result<RequestID> Scheduler::submit(const ExecutionGraph& graph) {
-    if (queue_.full()) {
-        return Error{ErrorCategory::Transient, "Queue full", __CONTEXT__};
-    }
-    if (!graph.isValid()) {
-        return Error{ErrorCategory::Permanent, "Invalid graph", __CONTEXT__};
-    }
-    // Submit...
-}
-```
-
----
-
-## Observability
-
-### Tracing Points
-
-**Scheduling Decisions:**
-- Model admission (model ID, WCET profile, schedulability result)
-- Request submission (request ID, model ID, priority, deadline)
-- Policy selection (which request chosen, why, alternative considered)
-- Stream allocation (which stream assigned, within which context)
-
-**Execution Events:**
-- RuntimeBackend invocation (model ID, stream ID, timestamp)
-- Completion (request ID, actual latency vs deadline, timestamp)
-- Deadline miss (request ID, expected vs actual, severity)
-
-**Memory Events:**
-- Context allocation (model ID, budget, actual usage)
-- Cross-model sharing (which models share, memory saved)
-- Pressure event (trigger, policy applied, models affected)
-
-### Trace Format
-
-Structured logs (JSON) suitable for offline analysis:
-
-```json
-{
-  "event": "schedule_decision",
-  "request_id": "req-123",
-  "policy": "Priority",
-  "priority": 10,
-  "queue_depth": 5,
-  "stream_id": "stream-2",
-  "timestamp": 1234567890
-}
 ```
 
 ---
@@ -553,66 +703,72 @@ Structured logs (JSON) suitable for offline analysis:
 
 ### Time Complexity
 
-**Model Admission:** O(n) where n = number of admitted models (schedulability analysis)
-
-**Memory Planning:** O(n * m) where n = models, m = memory regions (cross-model sharing)
-
-**Per-Invocation Scheduling:** O(log n) where n = queue depth (priority queue / EDF)
-
-**Execution Dispatch:** O(1) (delegate to RuntimeBackend)
+| Operation | Complexity | Notes |
+|-----------|------------|-------|
+| Model Admission | O(n) | n = number of admitted models |
+| Memory Planning | O(n × m) | n = models, m = tensors |
+| Per-Invocation Scheduling | O(log n) | n = queue depth |
+| Execution Dispatch | O(1) | Delegates to RuntimeBackend |
 
 ### Space Complexity
 
-**Per-Model State:** O(1) (execution context, WCET profile, resource budget)
-
-**Memory Plan:** O(n * m) where n = models, m = memory regions
-
-**Scheduling State:** O(n) where n = admitted models (WCET profiles, deadlines)
-
-**Trace Buffer:** O(k) where k = configurable trace buffer size
+| Storage | Complexity | Notes |
+|---------|------------|-------|
+| Per-Model State | O(1) | Context, WCET profile, budget |
+| Memory Plan | O(n × m) | n = models, m = tensors |
+| Trace Buffer | O(k) | k = configurable buffer size |
 
 ---
 
 ## Design Trade-offs
 
-### Orchestration vs Execution
+### Trade-off 1: Determinism vs Throughput
 
-**Choice:** Orchestrate existing runtimes rather than implementing kernel execution.
+**Decision**: Prioritise deterministic latency over peak throughput.
 
-**Trade-off:** Cannot optimise kernel-level execution, but avoids competing with mature runtimes.
+**Rationale**: Edge autonomous systems value predictability. A 10% throughput reduction is acceptable if it eliminates tail latency spikes.
 
-**Rationale:** TensorRT, TVM, and ONNX Runtime are excellent at kernel execution. The unsolved problem is multi-model orchestration under resource constraints. Focus on the gap, not the solved problem.
+**Manifestation**: Bounded queue depths, explicit admission control, non-work-conserving scheduler.
 
-### Static vs Dynamic Graphs
+### Trade-off 2: Static vs Dynamic Graphs
 
-**Choice:** Static graphs only.
+**Decision**: Support only static execution graphs.
 
-**Trade-off:** Flexibility sacrificed for determinism and predictability.
+**Rationale**: Dynamic graphs require runtime recompilation, which destroys latency predictability. Static graphs enable ahead-of-time memory planning and WCET estimation.
 
-**Rationale:** Edge systems prioritise predictability over flexibility. Dynamic graphs require runtime recompilation, adding latency and complexity.
+**Manifestation**: No support for dynamic control flow; variable-length inputs require padding or multiple graph variants.
 
-### Fail-Fast vs Graceful Degradation
+### Trade-off 3: Admission vs Graceful Degradation
 
-**Choice:** Fail-fast on resource exhaustion.
+**Decision**: Fail-fast on resource exhaustion.
 
-**Trade-off:** Robustness sacrificed for predictability.
+**Rationale**: Hidden degradation is non-deterministic. Explicit rejection enables the caller to implement application-specific fallback strategies.
 
-**Rationale:** Hidden retry and eviction policies are non-deterministic. Explicit failures enable caller to decide retry strategy.
-
-### Policy Abstraction vs Hardcoded Policy
-
-**Choice:** Policy abstraction (injected, not hardcoded).
-
-**Trade-off:** Complexity increased for flexibility.
-
-**Rationale:** Scheduling policy is domain-specific. Abstraction enables experimentation and A/B testing without modifying core system.
+**Manifestation**: Admission control rejects models that would violate guarantees; no background eviction or compaction.
 
 ---
 
 ## References
 
-- **Vision and Philosophy:** `docs/OUTLOOK.md`
-- **Development Roadmap:** `docs/ROADMAP.md`
-- **Terminology:** `docs/TERMINOLOGY.md`
-- **Agent Constraints:** `CLAUDE.md`
-- **Contribution Standards:** `CONTRIBUTING.md`
+### Academic Papers
+
+- Liu, C. L., & Layland, J. W. (1973). Scheduling algorithms for multiprogramming in a hard-real-time environment. *Journal of the ACM*.
+- George, L., Rivierre, N., & Spuri, M. (1996). Preemptive and non-preemptive real-time uniprocessor scheduling. *INRIA Research Report*.
+- Zhang, Q., et al. (REEF, SOSP'23). Reactive GPU execution for real-time AI services.
+- Gujarati, A., et al. (Clockwork, OSDI'20). Serving DNNs in real-time at datacenter scale.
+
+### Related Projects
+
+- TensorRT: https://developer.nvidia.com/tensorrt
+- TVM: https://tvm.apache.org/
+- ONNX Runtime: https://onnxruntime.ai/
+- PREEMPT-RT Linux: https://wiki.linuxfoundation.org/realtime/
+
+---
+
+## Document References
+
+- **Vision and Philosophy**: [OUTLOOK.md](OUTLOOK.md)
+- **Development Roadmap**: [ROADMAP.md](ROADMAP.md)
+- **MVP Definition**: [MVP.md](MVP.md)
+- **Terminology**: [TERMINOLOGY.md](TERMINOLOGY.md)
