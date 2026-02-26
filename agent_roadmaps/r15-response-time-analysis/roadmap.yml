@@ -1,0 +1,87 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r15-response-time-analysis
+  description: >
+    Extend AdmissionController with iterative response-time analysis (RTA) for
+    non-preemptive GPU scheduling. Most theoretically complex component in AegisRT.
+    Depends on r14 AdmissionController and TaskParameters.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r15-a
+  task: task-r15-a-0
+
+phases:
+  - id: phase-r15-a
+    title: "Non-preemptive blocking time computation"
+    status: pending
+    tasks:
+      - id: task-r15-a-0
+        title: "Design doc: non-preemptive RTA theory (George et al. 1996, blocking = max lower-priority WCET)"
+        status: pending
+      - id: task-r15-a-1
+        title: "AdmissionController::compute_blocking_time(tasks, new_task) -> Duration"
+        status: pending
+      - id: task-r15-a-2
+        title: "Blocking time definition: max WCET among all tasks with lower priority than new_task"
+        status: pending
+      - id: task-r15-a-3
+        title: "Edge case: no lower-priority tasks -> blocking_time = 0"
+        status: pending
+      - id: task-r15-a-4
+        title: "Unit tests: blocking time with known task sets, verify against George et al. examples"
+        status: pending
+
+  - id: phase-r15-b
+    title: "Iterative RTA algorithm"
+    status: pending
+    tasks:
+      - id: task-r15-b-0
+        title: "RTA formula: R^(k+1) = C + B + sum(ceil(R^k / T_j) * C_j) for higher-priority tasks j"
+        status: pending
+      - id: task-r15-b-1
+        title: "AdmissionController::compute_response_time(task, all_tasks) -> Result<Duration>"
+        status: pending
+      - id: task-r15-b-2
+        title: "Convergence check: iterate until R^(k+1) == R^k (converged) or R^k > deadline (infeasible)"
+        status: pending
+      - id: task-r15-b-3
+        title: "Iteration limit guard: max 1000 iterations, return ErrorCode::RtaNoConvergence if exceeded"
+        status: pending
+      - id: task-r15-b-4
+        title: "WCRT computation for all tasks in set: compute_all_response_times(tasks) -> map<ModelID,Duration>"
+        status: pending
+      - id: task-r15-b-5
+        title: "Unit tests: known RTA results from George et al. 1996 paper Table 1"
+        status: pending
+      - id: task-r15-b-6
+        title: "Unit tests: infeasible task set (R > deadline), verify ErrorCode::DeadlineMissed returned"
+        status: pending
+
+  - id: phase-r15-c
+    title: "Integration into analyze() and validation"
+    status: pending
+    tasks:
+      - id: task-r15-c-0
+        title: "Integrate RTA into AdmissionController::analyze(): compute WCRT, populate AdmissionResult::wcrt"
+        status: pending
+      - id: task-r15-c-1
+        title: "Admission decision: admitted only if WCRT <= deadline for ALL tasks in set (not just new task)"
+        status: pending
+      - id: task-r15-c-2
+        title: "Update rationale string to include WCRT and blocking time values"
+        status: pending
+      - id: task-r15-c-3
+        title: "Regression tests: r14 RMS/EDF tests still pass after RTA integration"
+        status: pending
+      - id: task-r15-c-4
+        title: "Comparative test: RTA rejects a task set that passes RMS utilisation test (tighter bound)"
+        status: pending
+      - id: task-r15-c-5
+        title: "API freeze: AdmissionController header updated with RTA methods, frozen"
+        status: pending

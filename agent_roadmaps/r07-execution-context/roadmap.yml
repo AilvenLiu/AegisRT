@@ -1,0 +1,102 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r07-execution-context
+  description: >
+    Implement ExecutionContext (per-model execution container with hard budget enforcement)
+    and FaultBoundary (integrated fault isolation). Central object for all higher layers.
+    Depends on r06 Result<T>, ResourceBudget, RuntimeBackend.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r07-a
+  task: task-r07-a-0
+
+phases:
+  - id: phase-r07-a
+    title: "Context lifecycle and state machine"
+    status: pending
+    tasks:
+      - id: task-r07-a-0
+        title: "Design doc: ExecutionContext state machine (Created -> Ready -> Running -> Faulted -> Destroyed)"
+        status: pending
+      - id: task-r07-a-1
+        title: "ContextState enum (Created, Ready, Running, Faulted, Destroyed) in include/aegisrt/layer2/execution_context.hpp"
+        status: pending
+      - id: task-r07-a-2
+        title: "ExecutionContext class skeleton (private constructor, model_id_, budget_, backend_, state_)"
+        status: pending
+      - id: task-r07-a-3
+        title: "ExecutionContext::create() factory (validate args, construct, return Result<unique_ptr<ExecutionContext>>)"
+        status: pending
+      - id: task-r07-a-4
+        title: "ExecutionContext::model_id(), budget(), state() accessors (const, noexcept)"
+        status: pending
+      - id: task-r07-a-5
+        title: "ExecutionContext destructor (release all tracked memory, assert state != Running)"
+        status: pending
+      - id: task-r07-a-6
+        title: "Unit tests: factory success, factory failure (null backend, zero budget), state transitions"
+        status: pending
+
+  - id: phase-r07-b
+    title: "Budget enforcement and resource tracking"
+    status: pending
+    tasks:
+      - id: task-r07-b-0
+        title: "Atomic resource counters (memory_used_ as atomic<size_t>, streams_in_use_ as atomic<int>, active_inferences_ as atomic<int>)"
+        status: pending
+      - id: task-r07-b-1
+        title: "ExecutionContext::can_allocate(bytes) -> bool and can_acquire_stream() -> bool (thread-safe budget checks)"
+        status: pending
+      - id: task-r07-b-2
+        title: "ExecutionContext::allocate_memory(bytes) -> Result<void> (CAS loop, update memory_used_)"
+        status: pending
+      - id: task-r07-b-3
+        title: "ExecutionContext::release_memory(bytes) (atomic fetch_sub, assert no underflow)"
+        status: pending
+      - id: task-r07-b-4
+        title: "ExecutionContext::execute(request) -> Result<ExecutionResult> (budget check -> backend -> update counters)"
+        status: pending
+      - id: task-r07-b-5
+        title: "ExecutionContext::reset() (clear counters, transition Faulted -> Ready)"
+        status: pending
+      - id: task-r07-b-6
+        title: "ExecutionContextMetrics struct (total_inferences, total_errors, total_execution_time, avg_execution_time, peak_memory_used, peak_streams_used)"
+        status: pending
+      - id: task-r07-b-7
+        title: "ExecutionContext::metrics() -> ExecutionContextMetrics (atomic snapshot of all counters)"
+        status: pending
+      - id: task-r07-b-8
+        title: "Unit tests: allocate up to limit succeeds, one-byte-over fails, concurrent allocations thread-safe, metrics accuracy"
+        status: pending
+
+  - id: phase-r07-c
+    title: "FaultBoundary integration and tracing"
+    status: pending
+    tasks:
+      - id: task-r07-c-0
+        title: "FaultBoundary class (last_error_ as optional<Error>, has_error(), last_error(), clear_error())"
+        status: pending
+      - id: task-r07-c-1
+        title: "Embed FaultBoundary in ExecutionContext (composition, not inheritance)"
+        status: pending
+      - id: task-r07-c-2
+        title: "ExecutionContext::execute() fault capture (on backend error: record fault, transition to Faulted)"
+        status: pending
+      - id: task-r07-c-3
+        title: "ExecutionContext::has_fault(), last_fault(), clear_fault() delegation to FaultBoundary"
+        status: pending
+      - id: task-r07-c-4
+        title: "TraceCollector integration (emit ContextCreated, ExecutionStarted, ExecutionCompleted, FaultRecorded events)"
+        status: pending
+      - id: task-r07-c-5
+        title: "Unit tests: fault capture, fault isolation (two contexts, fault in one does not affect other), clear_fault"
+        status: pending
+      - id: task-r07-c-6
+        title: "Phase exit criteria: all tests pass, TSan clean, API frozen in header"
+        status: pending

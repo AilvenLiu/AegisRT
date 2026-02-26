@@ -1,0 +1,87 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r18-trace-enhancement
+  description: >
+    Enhance observability infrastructure: extended TraceCollector filters, AuditTrail,
+    and MetricsAggregator. Transforms basic tracing into a complete observability system
+    for scheduling decisions and resource usage. Depends on r17 Scheduler.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r18-a
+  task: task-r18-a-0
+
+phases:
+  - id: phase-r18-a
+    title: "TraceEvent enhancement and extended query filters"
+    status: pending
+    tasks:
+      - id: task-r18-a-0
+        title: "Design doc: observability model (request_id, decision_chain_id, event correlation)"
+        status: pending
+      - id: task-r18-a-1
+        title: "TraceEvent: add decision_chain_id (string) field; request_id already exists as string per r04 design"
+        status: pending
+      - id: task-r18-a-2
+        title: "TraceCollector::query() extended: filter by request_id, decision_chain_id, time window"
+        status: pending
+      - id: task-r18-a-3
+        title: "TraceCollector::reconstruct_decision_chain(chain_id) -> vector<TraceEvent> (ordered by timestamp)"
+        status: pending
+      - id: task-r18-a-4
+        title: "RequestIDGenerator: thread-safe monotonic string generator (format: req-<timestamp>-<seq>)"
+        status: pending
+      - id: task-r18-a-5
+        title: "Unit tests: query by request_id, reconstruct_decision_chain with known events"
+        status: pending
+
+  - id: phase-r18-b
+    title: "AuditTrail scheduling-specific query API"
+    status: pending
+    tasks:
+      - id: task-r18-b-0
+        title: "AuditTrail class (wraps shared_ptr<TraceCollector>, provides scheduling-domain query API)"
+        status: pending
+      - id: task-r18-b-1
+        title: "AuditTrail::get_admission_decision(model_id) -> optional<AdmissionResult> (from trace)"
+        status: pending
+      - id: task-r18-b-2
+        title: "AuditTrail::get_scheduling_history(model_id, window) -> vector<SchedulingDecision>"
+        status: pending
+      - id: task-r18-b-3
+        title: "AuditTrail::get_deadline_misses(window) -> vector<DeadlineMissEvent>"
+        status: pending
+      - id: task-r18-b-4
+        title: "AuditTrail::get_rejection_history(window) -> vector<AdmissionRejection>"
+        status: pending
+      - id: task-r18-b-5
+        title: "Unit tests: AuditTrail queries on a pre-populated TraceCollector"
+        status: pending
+
+  - id: phase-r18-c
+    title: "MetricsAggregator and Phase 4 observability validation"
+    status: pending
+    tasks:
+      - id: task-r18-c-0
+        title: "MetricsAggregator class (per-model utilisation, latency stats, deadline miss rate)"
+        status: pending
+      - id: task-r18-c-1
+        title: "MetricsAggregator::compute_utilisation(model_id, window) -> double"
+        status: pending
+      - id: task-r18-c-2
+        title: "MetricsAggregator::compute_latency_stats(model_id, window) -> LatencyStats (mean, p99, p999)"
+        status: pending
+      - id: task-r18-c-3
+        title: "MetricsAggregator::compute_deadline_miss_rate(model_id, window) -> double"
+        status: pending
+      - id: task-r18-c-4
+        title: "Unit tests: MetricsAggregator with known event sequences, verify computed metrics"
+        status: pending
+      - id: task-r18-c-5
+        title: "API freeze: include/aegisrt/trace/audit_trail.hpp and metrics_aggregator.hpp finalised"
+        status: pending

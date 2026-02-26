@@ -1,0 +1,93 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r14-admission-controller
+  description: >
+    Implement formal schedulability analysis engine: AdmissionController with RMS and EDF
+    utilisation tests. Core research contribution of AegisRT -- answers whether a new model
+    can be admitted safely. Depends on r13 WCETProfile.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r14-a
+  task: task-r14-a-0
+
+phases:
+  - id: phase-r14-a
+    title: "Task parameters and admission data structures"
+    status: pending
+    tasks:
+      - id: task-r14-a-0
+        title: "Design doc: admission control theory (RMS Liu-Layland bound, EDF utilisation test, non-preemptive adaptation)"
+        status: pending
+      - id: task-r14-a-1
+        title: "TaskParameters struct (model_id, wcet, period, deadline, priority) in scheduler/types.hpp"
+        status: pending
+      - id: task-r14-a-2
+        title: "AdmissionRequest struct (model_id, wcet_profile, period, deadline, priority)"
+        status: pending
+      - id: task-r14-a-3
+        title: "AdmissionResult struct (admitted, reason, utilisation, wcrt, max_blocking_time, analysis_detail)"
+        status: pending
+      - id: task-r14-a-4
+        title: "AdmissionResult::make_admitted() and make_rejected() factory methods"
+        status: pending
+      - id: task-r14-a-5
+        title: "Unit tests: AdmissionResult construction, admitted/rejected predicates"
+        status: pending
+
+  - id: phase-r14-b
+    title: "RMS and EDF schedulability tests"
+    status: pending
+    tasks:
+      - id: task-r14-b-0
+        title: "AdmissionController class skeleton (constructor takes vector<TaskParameters> existing_tasks)"
+        status: pending
+      - id: task-r14-b-1
+        title: "Utilisation computation: U = sum(C_i / T_i) for all tasks including new task"
+        status: pending
+      - id: task-r14-b-2
+        title: "RMS bound: U_bound(n) = n * (2^(1/n) - 1), precomputed table for n=1..64"
+        status: pending
+      - id: task-r14-b-3
+        title: "AdmissionController::test_rms(tasks) -> bool (U <= U_bound(n))"
+        status: pending
+      - id: task-r14-b-4
+        title: "AdmissionController::test_edf(tasks) -> bool (U <= 1.0)"
+        status: pending
+      - id: task-r14-b-5
+        title: "Unit tests: known feasible/infeasible RMS configurations from Liu-Layland 1973"
+        status: pending
+      - id: task-r14-b-6
+        title: "Unit tests: EDF test with U=0.99 (admitted) and U=1.01 (rejected)"
+        status: pending
+
+  - id: phase-r14-c
+    title: "analyze() integration and rationale generation"
+    status: pending
+    tasks:
+      - id: task-r14-c-0
+        title: "AdmissionController::analyze(request, existing) -> AdmissionResult (full analysis pipeline)"
+        status: pending
+      - id: task-r14-c-1
+        title: "Rationale string generation (include U, U_bound, n, admitted/rejected reason)"
+        status: pending
+      - id: task-r14-c-2
+        title: "AdmissionController::add_task(params) and remove_task(model_id) (update internal task set)"
+        status: pending
+      - id: task-r14-c-3
+        title: "Thread safety: mutex protecting task set for concurrent analyze() calls"
+        status: pending
+      - id: task-r14-c-4
+        title: "TraceCollector integration (emit AdmissionDecision event with full AdmissionResult)"
+        status: pending
+      - id: task-r14-c-5
+        title: "Unit tests: analyze() with 3-task set, verify rationale contains utilisation numbers"
+        status: pending
+      - id: task-r14-c-6
+        title: "API freeze: include/aegisrt/layer3/admission_controller.hpp finalised"
+        status: pending

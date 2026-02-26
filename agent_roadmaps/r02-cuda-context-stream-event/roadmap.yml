@@ -1,0 +1,116 @@
+# roadmap.yml -- Canonical Execution State
+roadmap:
+  name: r02-cuda-context-stream-event
+  description: >
+    Implement the three core CUDA RAII primitives: CudaContext, CudaStream, and
+    CudaEvent. These are the foundation of all GPU resource management in AegisRT.
+    Every component in Layer 2 and Layer 3 depends on these being correct, leak-free,
+    and move-only. Includes stream priority support and stream-event integration.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r02-a
+  task: task-r02-a-0
+
+phases:
+
+  - id: phase-r02-a
+    title: "Namespace, Type System, and Common Utilities"
+    status: pending
+    tasks:
+      - id: task-r02-a-0
+        title: "Namespace structure: aegisrt::cuda in include/aegisrt/cuda/; forward declarations header fwd.hpp"
+        status: pending
+        notes: "All CUDA RAII types live in aegisrt::cuda. fwd.hpp forward-declares all classes."
+
+      - id: task-r02-a-1
+        title: "StreamFlags enum class: Default=0, NonBlocking=cudaStreamNonBlock, HighPriority tag (matches CUDA API)"
+        status: pending
+
+      - id: task-r02-a-2
+        title: "EventFlags enum class: Default, BlockingSync, DisableTiming, Interprocess"
+        status: pending
+
+      - id: task-r02-a-3
+        title: "StreamPriority struct: query_priority_range(), high_priority(), low_priority() factories"
+        status: pending
+        notes: "Wraps cudaDeviceGetStreamPriorityRange(). Needed for real-time scheduling."
+
+      - id: task-r02-a-4
+        title: "Unit tests for StreamFlags, EventFlags, StreamPriority (values, priority range query)"
+        status: pending
+
+  - id: phase-r02-b
+    title: "CudaContext and CudaStream"
+    status: pending
+    tasks:
+      - id: task-r02-b-0
+        title: "CudaContext: device selection by ID, cudaSetDevice, RAII init/deinit, device_id() accessor"
+        status: pending
+        notes: "Constructor validates device_id < cudaGetDeviceCount(). Move-only."
+
+      - id: task-r02-b-1
+        title: "CudaContext: double-init guard (static mutex + set<int> of active devices)"
+        status: pending
+        notes: "Prevents two CudaContext objects owning the same device. Thread-safe."
+
+      - id: task-r02-b-2
+        title: "CudaStream: move-only RAII, cudaStreamCreate/Destroy, synchronise(), is_ready(), handle()"
+        status: pending
+        notes: "Destructor calls cudaStreamSynchronize() before cudaStreamDestroy()."
+
+      - id: task-r02-b-3
+        title: "CudaStream: priority constructor (cudaStreamCreateWithPriority), priority() accessor"
+        status: pending
+
+      - id: task-r02-b-4
+        title: "CudaStream: record_event(CudaEvent&) and wait_event(const CudaEvent&)"
+        status: pending
+        notes: "record_event: cudaEventRecord. wait_event: cudaStreamWaitEvent."
+
+      - id: task-r02-b-5
+        title: "Unit tests for CudaContext (valid device, invalid ID, double-init guard, move semantics)"
+        status: pending
+
+      - id: task-r02-b-6
+        title: "Unit tests for CudaStream (create/destroy, move semantics, synchronise, priority)"
+        status: pending
+
+  - id: phase-r02-c
+    title: "CudaEvent and Stream-Event Integration"
+    status: pending
+    tasks:
+      - id: task-r02-c-0
+        title: "CudaEvent: move-only RAII, cudaEventCreateWithFlags, record(stream), synchronise(), handle()"
+        status: pending
+        notes: "Destructor calls cudaEventSynchronize() before cudaEventDestroy()."
+
+      - id: task-r02-c-1
+        title: "CudaEvent: is_ready(), elapsed_ms(start, end) timing, flags() accessor"
+        status: pending
+        notes: "elapsed_ms wraps cudaEventElapsedTime(). Returns float milliseconds."
+
+      - id: task-r02-c-2
+        title: "CudaEvent: DisableTiming flag support; elapsed_ms() returns error if called on DisableTiming event"
+        status: pending
+
+      - id: task-r02-c-3
+        title: "Integration test: CudaStream + CudaEvent timing (record start/end, verify elapsed_ms > 0)"
+        status: pending
+
+      - id: task-r02-c-4
+        title: "Integration test: multi-stream synchronisation (stream B waits for event recorded on stream A)"
+        status: pending
+        notes: "Proves wait_event() works correctly across streams. Critical for scheduler."
+
+      - id: task-r02-c-5
+        title: "cuda-memcheck validation: all tests under --leak-check full, zero leaks and zero errors"
+        status: pending
+
+      - id: task-r02-c-6
+        title: "clang-tidy clean on all new files; Doxygen comments on all public APIs"
+        status: pending

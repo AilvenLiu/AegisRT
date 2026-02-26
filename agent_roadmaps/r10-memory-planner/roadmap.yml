@@ -1,0 +1,90 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r10-memory-planner
+  description: >
+    Implement static memory allocation planner. Given tensor lifetimes and sharing
+    opportunities, generate AllocationPlan minimising peak memory via bin-packing.
+    Depends on r09 TensorLifetime, SharingOpportunity, MemoryRegion.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r10-a
+  task: task-r10-a-0
+
+phases:
+  - id: phase-r10-a
+    title: "AllocationPlan and MemoryBinding data structures"
+    status: pending
+    tasks:
+      - id: task-r10-a-0
+        title: "Design doc: bin-packing algorithm choice (first-fit decreasing), alignment strategy"
+        status: pending
+      - id: task-r10-a-1
+        title: "AllocationPlan struct (allocations: map<TensorID,MemoryRegion>, sharing_pairs, peak_bytes, saved_bytes)"
+        status: pending
+      - id: task-r10-a-2
+        title: "AllocationPlan::is_valid() predicate (no two live tensors share overlapping MemoryRegion)"
+        status: pending
+      - id: task-r10-a-3
+        title: "MemoryBinding struct (model_id, plan reference, bound_regions: map<TensorID,void*>)"
+        status: pending
+      - id: task-r10-a-4
+        title: "MemoryBinding::is_bound(tensor_id) -> bool and get_ptr(tensor_id) -> void*"
+        status: pending
+      - id: task-r10-a-5
+        title: "Unit tests: AllocationPlan construction, is_valid() with known valid/invalid plans"
+        status: pending
+
+  - id: phase-r10-b
+    title: "MemoryPlanner bin-packing algorithm"
+    status: pending
+    tasks:
+      - id: task-r10-b-0
+        title: "MemoryPlanner class skeleton (stateless, generate_plan() is the sole public method)"
+        status: pending
+      - id: task-r10-b-1
+        title: "Sort tensors by size descending (first-fit decreasing heuristic)"
+        status: pending
+      - id: task-r10-b-2
+        title: "Assign non-shared tensors to unique regions (alignment-aware offset computation)"
+        status: pending
+      - id: task-r10-b-3
+        title: "Assign shared tensor pairs to same region (verify non-overlapping lifetimes before sharing)"
+        status: pending
+      - id: task-r10-b-4
+        title: "Peak memory computation (max concurrent live bytes at any timestamp in plan)"
+        status: pending
+      - id: task-r10-b-5
+        title: "Saved memory computation (isolated_peak - shared_peak, must be >= 0)"
+        status: pending
+      - id: task-r10-b-6
+        title: "MemoryPlanner::generate_plan(lifetimes, opportunities) -> Result<AllocationPlan>"
+        status: pending
+
+  - id: phase-r10-c
+    title: "Validation and correctness proofs"
+    status: pending
+    tasks:
+      - id: task-r10-c-0
+        title: "Correctness test: plan.is_valid() is true for all generated plans"
+        status: pending
+      - id: task-r10-c-1
+        title: "Optimality test: shared plan peak_bytes <= isolated plan peak_bytes"
+        status: pending
+      - id: task-r10-c-2
+        title: "Alignment test: all MemoryRegion offsets satisfy alignment requirement"
+        status: pending
+      - id: task-r10-c-3
+        title: "Edge cases: empty lifetimes, single tensor, all tensors overlapping (no sharing possible)"
+        status: pending
+      - id: task-r10-c-4
+        title: "Performance test: generate_plan(500 tensors, 200 opportunities) < 5ms"
+        status: pending
+      - id: task-r10-c-5
+        title: "API freeze: include/aegisrt/layer2/memory_planner.hpp finalised"
+        status: pending

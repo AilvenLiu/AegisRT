@@ -1,0 +1,87 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r12-memory-benchmarks
+  description: >
+    Validate memory orchestration with quantitative benchmarks. Demonstrate >15%
+    memory reduction vs isolated allocation. Validation roadmap -- minimal new
+    production code. Depends on r11 MemoryOrchestrator being complete.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r12-a
+  task: task-r12-a-0
+
+phases:
+  - id: phase-r12-a
+    title: "Benchmark harness and baseline measurement"
+    status: pending
+    tasks:
+      - id: task-r12-a-0
+        title: "Design doc: 3-model workload specification (tensor sizes, lifetimes, sharing opportunities)"
+        status: pending
+      - id: task-r12-a-1
+        title: "BenchmarkWorkload struct (model_count, tensor_lifetimes, expected_sharing_pairs)"
+        status: pending
+      - id: task-r12-a-2
+        title: "make_three_model_workload() factory (deterministic, reproducible tensor lifetimes)"
+        status: pending
+      - id: task-r12-a-3
+        title: "Isolated allocation baseline (each model allocates peak memory independently, no sharing)"
+        status: pending
+      - id: task-r12-a-4
+        title: "Baseline peak memory measurement and assertion (sum of per-model peaks)"
+        status: pending
+      - id: task-r12-a-5
+        title: "Benchmark timing harness (measure plan() + bind() latency, 100 iterations)"
+        status: pending
+
+  - id: phase-r12-b
+    title: "Orchestrated allocation and reduction measurement"
+    status: pending
+    tasks:
+      - id: task-r12-b-0
+        title: "Orchestrated allocation measurement (MemoryOrchestrator::plan() for all 3 models)"
+        status: pending
+      - id: task-r12-b-1
+        title: "Memory reduction calculation (isolated_peak - orchestrated_peak) / isolated_peak"
+        status: pending
+      - id: task-r12-b-2
+        title: "Reduction assertion (>= 15% required, test fails if not met)"
+        status: pending
+      - id: task-r12-b-3
+        title: "Sharing efficiency report (which tensor pairs were shared, bytes saved per pair)"
+        status: pending
+      - id: task-r12-b-4
+        title: "AllocationPlan::is_valid() assertion on orchestrated plan"
+        status: pending
+      - id: task-r12-b-5
+        title: "Bind/release cycle correctness (pool.used() returns to 0 after all releases)"
+        status: pending
+
+  - id: phase-r12-c
+    title: "Pressure handling and Phase 2 exit criteria"
+    status: pending
+    tasks:
+      - id: task-r12-c-0
+        title: "Pressure simulation: fill pool to 85% (High), verify Evict policy frees memory"
+        status: pending
+      - id: task-r12-c-1
+        title: "Pressure simulation: fill pool to 95% (Critical), verify Reject policy returns error (PressureLevel::Critical)"
+        status: pending
+      - id: task-r12-c-2
+        title: "Compact policy benchmark: measure re-plan latency under pressure"
+        status: pending
+      - id: task-r12-c-3
+        title: "Phase 2 exit criteria checklist (>15% reduction, all pressure policies tested, latency targets)"
+        status: pending
+      - id: task-r12-c-4
+        title: "docs/PHASE2_VALIDATION.md (benchmark results, reduction achieved, methodology)"
+        status: pending
+      - id: task-r12-c-5
+        title: "CI integration: benchmark suite runs in CI, fails if reduction < 15%"
+        status: pending

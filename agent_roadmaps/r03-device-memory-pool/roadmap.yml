@@ -1,0 +1,121 @@
+# roadmap.yml -- Canonical Execution State
+roadmap:
+  name: r03-device-memory-pool
+  description: >
+    Implement DeviceMemoryPool (tracked GPU allocator with leak detection, double-free
+    detection, pressure levels, and alignment enforcement) and DeviceCapabilities
+    (hardware introspection including Jetson detection). These are the memory substrate
+    for all higher layers.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r03-a
+  task: task-r03-a-0
+
+phases:
+
+  - id: phase-r03-a
+    title: "DeviceCapabilities and Hardware Introspection"
+    status: pending
+    tasks:
+      - id: task-r03-a-0
+        title: "DeviceCapabilities struct: compute_capability (major.minor), total_memory, multiprocessor_count, max_threads_per_block"
+        status: pending
+        notes: "Also: memory_bus_width, l2_cache_size, unified_addressing, concurrent_kernels."
+
+      - id: task-r03-a-1
+        title: "DeviceCapabilities::query(device_id) factory: wraps cudaGetDeviceProperties, validates device_id"
+        status: pending
+
+      - id: task-r03-a-2
+        title: "DeviceCapabilities::query_all() factory: returns vector<DeviceCapabilities> for all devices"
+        status: pending
+
+      - id: task-r03-a-3
+        title: "DeviceCapabilities::is_jetson() detection: checks integrated GPU flag and device name prefix"
+        status: pending
+        notes: "Jetson devices have cudaDeviceProp.integrated == 1 and name starting with 'Orin' or 'Xavier'."
+
+      - id: task-r03-a-4
+        title: "DeviceCapabilities::is_integrated_gpu() and memory_bandwidth_gb_s() computed field"
+        status: pending
+
+      - id: task-r03-a-5
+        title: "Unit tests for DeviceCapabilities (valid device, invalid device, Jetson detection logic)"
+        status: pending
+
+  - id: phase-r03-b
+    title: "DeviceMemoryPool Core"
+    status: pending
+    tasks:
+      - id: task-r03-b-0
+        title: "AllocationRecord struct: ptr, size_bytes, alignment, allocation_timestamp, tag (optional string)"
+        status: pending
+        notes: "tag is used for debugging: caller can label allocations (e.g. 'model_a_weights')."
+
+      - id: task-r03-b-1
+        title: "DeviceMemoryPool constructor: explicit DeviceMemoryPool(size_t capacity_bytes, int device_id = 0)"
+        status: pending
+        notes: "Allocates capacity_bytes of device memory upfront via cudaMalloc. Stores base_ptr_."
+
+      - id: task-r03-b-2
+        title: "DeviceMemoryPool::allocate(size_t bytes, size_t alignment = 256) -> Result<void*>"
+        status: pending
+        notes: "Alignment must be power of 2. Returns aligned pointer within pool. O(log n) via map."
+
+      - id: task-r03-b-3
+        title: "DeviceMemoryPool::deallocate(void* ptr): remove from map, return to free list, double-free detection"
+        status: pending
+        notes: "Double-free: if ptr not in map, log error via spdlog, do NOT abort (return error)."
+
+      - id: task-r03-b-4
+        title: "DeviceMemoryPool::allocate_tagged(size_t bytes, std::string_view tag) -> Result<void*>"
+        status: pending
+        notes: "Convenience wrapper that sets AllocationRecord::tag for debugging."
+
+      - id: task-r03-b-5
+        title: "DeviceMemoryPool destructor: log all unreleased allocations as errors; call cudaFree(base_ptr_)"
+        status: pending
+        notes: "Leak detection: iterate map, log each unreleased allocation with its tag and size."
+
+      - id: task-r03-b-6
+        title: "Unit tests for DeviceMemoryPool (allocate/deallocate, capacity arithmetic, alignment, double-free)"
+        status: pending
+
+  - id: phase-r03-c
+    title: "Pool Observability and Pressure Tracking"
+    status: pending
+    tasks:
+      - id: task-r03-c-0
+        title: "PressureLevel enum class: None (<50%), Low (50-70%), Medium (70-85%), High (85-95%), Critical (>95%)"
+        status: pending
+
+      - id: task-r03-c-1
+        title: "DeviceMemoryPool::current_pressure() -> PressureLevel (derived from used/capacity ratio)"
+        status: pending
+
+      - id: task-r03-c-2
+        title: "PoolStats struct: capacity, used, available, allocation_count, peak_used, fragmentation_ratio"
+        status: pending
+        notes: "fragmentation_ratio = 1 - (largest_free_block / available). Requires free-list tracking."
+
+      - id: task-r03-c-3
+        title: "DeviceMemoryPool::stats() -> PoolStats; peak_used tracked via high-water mark"
+        status: pending
+
+      - id: task-r03-c-4
+        title: "DeviceMemoryPool::reset(): release all allocations, reset free list (for testing only)"
+        status: pending
+        notes: "Must log warning if called with active allocations. Used in test fixtures for isolation."
+
+      - id: task-r03-c-5
+        title: "Unit tests for pressure levels, PoolStats accuracy, peak_used tracking, reset()"
+        status: pending
+
+      - id: task-r03-c-6
+        title: "cuda-memcheck validation and clang-tidy clean on all new files"
+        status: pending

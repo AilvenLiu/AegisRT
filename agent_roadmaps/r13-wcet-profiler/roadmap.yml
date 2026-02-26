@@ -1,0 +1,96 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r13-wcet-profiler
+  description: >
+    Implement statistical worst-case execution time estimation. WCETProfiler is the
+    data source for AdmissionController -- conservative WCET estimates enable formal
+    schedulability. Depends on r04 TraceCollector and r06 ModelID.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r13-a
+  task: task-r13-a-0
+
+phases:
+  - id: phase-r13-a
+    title: "WCETProfile data structures and statistical primitives"
+    status: pending
+    tasks:
+      - id: task-r13-a-0
+        title: "Design doc: WCET estimation methodology (percentile-based, safety margin, contention factor)"
+        status: pending
+      - id: task-r13-a-1
+        title: "ProfileMethod enum (Statistical, Analytical, Hybrid) in include/aegisrt/layer3/wcet_profiler.hpp"
+        status: pending
+      - id: task-r13-a-1b
+        title: "WCETProfile struct (worst_case, average_case, best_case, p99, p999, contention_factor, sample_count, confidence_level, method: ProfileMethod, hardware_id: string)"
+        status: pending
+      - id: task-r13-a-2
+        title: "WCETProfile::is_valid() predicate (sample_count >= 30, worst_case >= p999 >= p99 >= average_case)"
+        status: pending
+      - id: task-r13-a-3
+        title: "Statistical primitives: mean(), stddev(), percentile(samples, p) in stats.hpp"
+        status: pending
+      - id: task-r13-a-4
+        title: "Z-score lookup table for confidence intervals (90%, 95%, 99%, 99.9%)"
+        status: pending
+      - id: task-r13-a-5
+        title: "Unit tests: mean/stddev/percentile with known distributions, z-score lookup"
+        status: pending
+
+  - id: phase-r13-b
+    title: "WCETProfiler measurement and estimation"
+    status: pending
+    tasks:
+      - id: task-r13-b-0
+        title: "WCETProfiler class (takes TraceCollector& reference, configurable min_samples, default safety_margin=1.5)"
+        status: pending
+      - id: task-r13-b-1
+        title: "WCETProfiler::record_sample(model_id, duration) (accumulate samples per model)"
+        status: pending
+      - id: task-r13-b-2
+        title: "WCETProfiler::compute_profile(model_id, confidence, safety_margin) -> Result<WCETProfile>"
+        status: pending
+      - id: task-r13-b-3
+        title: "Confidence interval computation (upper_bound = mean + z * stddev / sqrt(n))"
+        status: pending
+      - id: task-r13-b-4
+        title: "Safety margin application (wcet = upper_bound * safety_margin, safety_margin >= 1.0)"
+        status: pending
+      - id: task-r13-b-5
+        title: "Minimum sample enforcement (return ErrorCode::InsufficientSamples if count < min_samples)"
+        status: pending
+      - id: task-r13-b-6
+        title: "WCETProfiler::profile_under_load(context, background_contexts, min_samples) -> Result<WCETProfile> (contention-aware profiling)"
+        status: pending
+      - id: task-r13-b-7
+        title: "Unit tests: known distribution (normal, uniform), verify p99/p999 accuracy within 5%"
+        status: pending
+
+  - id: phase-r13-c
+    title: "Contention factor, serialisation, and API freeze"
+    status: pending
+    tasks:
+      - id: task-r13-c-0
+        title: "Contention factor measurement (profile under concurrent load vs isolated, ratio = concurrent_p99 / isolated_p99)"
+        status: pending
+      - id: task-r13-c-1
+        title: "WCETProfiler::measure_contention_factor(model_id, concurrent_models) -> double"
+        status: pending
+      - id: task-r13-c-2
+        title: "WCETProfile JSON serialisation (save/load via nlohmann/json or hand-rolled)"
+        status: pending
+      - id: task-r13-c-3
+        title: "WCETProfiler::save_profile(model_id, path) and load_profile(path) -> Result<WCETProfile>"
+        status: pending
+      - id: task-r13-c-4
+        title: "Unit tests: serialisation round-trip, contention factor > 1.0 under load"
+        status: pending
+      - id: task-r13-c-5
+        title: "API freeze: include/aegisrt/layer3/wcet_profiler.hpp finalised"
+        status: pending

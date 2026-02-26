@@ -1,0 +1,84 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r08-context-integration-tests
+  description: >
+    Validate multi-model isolation through comprehensive integration tests.
+    No new production code -- only integration test scenarios proving Phase 1
+    isolation guarantees. Depends on r07 ExecutionContext being complete.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r08-a
+  task: task-r08-a-0
+
+phases:
+  - id: phase-r08-a
+    title: "Test infrastructure and fixture design"
+    status: pending
+    tasks:
+      - id: task-r08-a-0
+        title: "Design doc: isolation test matrix (budget, fault, resource, concurrency axes)"
+        status: pending
+      - id: task-r08-a-1
+        title: "IntegrationTestFixture class (two ExecutionContexts, two MockBackends, shared TraceCollector)"
+        status: pending
+      - id: task-r08-a-2
+        title: "MockBackend error injection helpers (inject_error_on_next(), inject_error_after_n())"
+        status: pending
+      - id: task-r08-a-3
+        title: "Budget configuration helpers (make_tight_budget(), make_generous_budget())"
+        status: pending
+      - id: task-r08-a-4
+        title: "Trace assertion helpers (assert_event_emitted(), assert_no_fault_for_model())"
+        status: pending
+
+  - id: phase-r08-b
+    title: "Budget and fault isolation tests"
+    status: pending
+    tasks:
+      - id: task-r08-b-0
+        title: "Budget isolation: Model A budget violation returns error, Model B executes successfully"
+        status: pending
+      - id: task-r08-b-1
+        title: "Budget boundary: exactly-at-limit allocation succeeds; one-byte-over fails"
+        status: pending
+      - id: task-r08-b-2
+        title: "Fault isolation: Model A backend error transitions A to Faulted, B remains Ready"
+        status: pending
+      - id: task-r08-b-3
+        title: "Fault isolation: Model A fault does not appear in Model B FaultBoundary"
+        status: pending
+      - id: task-r08-b-4
+        title: "Recovery test: Model A reset() after fault, subsequent execute() succeeds"
+        status: pending
+      - id: task-r08-b-5
+        title: "Resource counter isolation: Model A memory_used_ and Model B memory_used_ are independent"
+        status: pending
+
+  - id: phase-r08-c
+    title: "Concurrency and trace validation tests"
+    status: pending
+    tasks:
+      - id: task-r08-c-0
+        title: "Concurrent execution: two models execute on separate threads, no data races (TSan)"
+        status: pending
+      - id: task-r08-c-1
+        title: "Concurrent allocation stress: 8 threads allocate/release on same context, verify no underflow"
+        status: pending
+      - id: task-r08-c-2
+        title: "Trace completeness: every execute() produces ContextCreated + ExecutionStarted + ExecutionCompleted"
+        status: pending
+      - id: task-r08-c-3
+        title: "Trace isolation: Model A events do not appear in Model B decision chain"
+        status: pending
+      - id: task-r08-c-4
+        title: "Phase 1 exit criteria checklist (all isolation guarantees verified, document results)"
+        status: pending
+      - id: task-r08-c-5
+        title: "CI integration: integration test suite runs in CI with TSan enabled"
+        status: pending

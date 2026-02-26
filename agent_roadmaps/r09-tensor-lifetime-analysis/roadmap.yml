@@ -1,0 +1,90 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r09-tensor-lifetime-analysis
+  description: >
+    Implement tensor lifetime data structures and LifetimeAnalyzer. Analytical
+    foundation of memory orchestration -- without knowing when tensors are live,
+    no sharing is possible. Depends on r07 ExecutionContext and r06 ModelID.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r09-a
+  task: task-r09-a-0
+
+phases:
+  - id: phase-r09-a
+    title: "Core data structures"
+    status: pending
+    tasks:
+      - id: task-r09-a-0
+        title: "Design doc: tensor lifetime model (what is a lifetime, how timestamps are assigned)"
+        status: pending
+      - id: task-r09-a-1
+        title: "TensorID strong typedef (uint64_t, globally unique, hashable via std::hash specialisation)"
+        status: pending
+      - id: task-r09-a-2
+        title: "TensorLifetime struct (tensor_id, alloc_time, free_time, size_bytes, alignment, owner_model_id)"
+        status: pending
+      - id: task-r09-a-3
+        title: "MemoryRegion struct (offset_bytes, size_bytes, alignment) with overlap() predicate"
+        status: pending
+      - id: task-r09-a-4
+        title: "SharingOpportunity struct (tensor_a, tensor_b, shared_size_bytes, non_overlapping: bool)"
+        status: pending
+      - id: task-r09-a-5
+        title: "Unit tests: TensorID hash, TensorLifetime construction, MemoryRegion::overlap()"
+        status: pending
+
+  - id: phase-r09-b
+    title: "LifetimeAnalyzer core algorithms"
+    status: pending
+    tasks:
+      - id: task-r09-b-0
+        title: "LifetimeAnalyzer class skeleton (stateless, all methods static or const)"
+        status: pending
+      - id: task-r09-b-1
+        title: "LifetimeAnalyzer::compute_lifetimes(contexts) -> vector<TensorLifetime> (extract from execution trace)"
+        status: pending
+      - id: task-r09-b-2
+        title: "LifetimeAnalyzer::find_non_overlapping(lifetimes) -> vector<pair<TensorID,TensorID>>"
+        status: pending
+      - id: task-r09-b-3
+        title: "LifetimeAnalyzer::find_sharing_opportunities(lifetimes) -> vector<SharingOpportunity>"
+        status: pending
+      - id: task-r09-b-4
+        title: "Overlap detection algorithm (interval intersection: [a.alloc, a.free) vs [b.alloc, b.free))"
+        status: pending
+      - id: task-r09-b-5
+        title: "Cross-model sharing: only tensors from different models are candidates"
+        status: pending
+      - id: task-r09-b-6
+        title: "Unit tests: known lifetime sets, verify correct overlap/non-overlap classification"
+        status: pending
+
+  - id: phase-r09-c
+    title: "Validation and API freeze"
+    status: pending
+    tasks:
+      - id: task-r09-c-0
+        title: "Property-based test: if lifetimes overlap, they must NOT appear as sharing opportunity"
+        status: pending
+      - id: task-r09-c-1
+        title: "Property-based test: sharing opportunity size <= min(tensor_a.size, tensor_b.size)"
+        status: pending
+      - id: task-r09-c-2
+        title: "Performance test: 1000 tensors, find_sharing_opportunities completes in < 10ms"
+        status: pending
+      - id: task-r09-c-3
+        title: "Integration with TraceCollector: compute_lifetimes reads alloc/free events from trace"
+        status: pending
+      - id: task-r09-c-4
+        title: "API freeze: headers in include/aegisrt/layer2/lifetime_analyzer.hpp finalised"
+        status: pending
+      - id: task-r09-c-5
+        title: "Phase exit criteria: all tests pass, API frozen, performance target met"
+        status: pending

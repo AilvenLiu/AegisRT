@@ -1,0 +1,90 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r11-memory-orchestrator
+  description: >
+    Implement MemoryOrchestrator (cross-model memory coordinator) and PressureHandler.
+    Ties together DeviceMemoryPool, LifetimeAnalyzer, and MemoryPlanner into a single
+    coordinated subsystem. Depends on r09 and r10.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r11-a
+  task: task-r11-a-0
+
+phases:
+  - id: phase-r11-a
+    title: "PressurePolicy and orchestrator skeleton"
+    status: pending
+    tasks:
+      - id: task-r11-a-0
+        title: "Design doc: orchestrator coordination model (plan -> bind -> execute -> release lifecycle)"
+        status: pending
+      - id: task-r11-a-1
+        title: "PressureLevel enum (Normal, Elevated, Critical) with threshold constants"
+        status: pending
+      - id: task-r11-a-2
+        title: "PressurePolicy enum (Reject, Evict, Compact, Degrade) and policy dispatch table (matches ARCHITECTURE.md)"
+        status: pending
+      - id: task-r11-a-3
+        title: "MemoryOrchestrator class skeleton (constructor takes shared_ptr<DeviceMemoryPool>, shared_ptr<TraceCollector>)"
+        status: pending
+      - id: task-r11-a-4
+        title: "MemoryOrchestrator::current_pressure() -> PressureLevel (based on pool.used() / pool.capacity())"
+        status: pending
+      - id: task-r11-a-5
+        title: "Unit tests: pressure level thresholds (Normal < 70%, Elevated 70-90%, Critical > 90%)"
+        status: pending
+
+  - id: phase-r11-b
+    title: "Plan, bind, and release operations"
+    status: pending
+    tasks:
+      - id: task-r11-b-0
+        title: "MemoryOrchestrator::plan(contexts) -> Result<AllocationPlan> (run LifetimeAnalyzer + MemoryPlanner)"
+        status: pending
+      - id: task-r11-b-1
+        title: "MemoryOrchestrator::bind(model_id, plan) -> Result<MemoryBinding> (allocate from pool, populate binding)"
+        status: pending
+      - id: task-r11-b-2
+        title: "MemoryOrchestrator::release(model_id) -> void (return all bound regions to pool)"
+        status: pending
+      - id: task-r11-b-3
+        title: "Binding registry (internal map<ModelID, MemoryBinding> to track active bindings)"
+        status: pending
+      - id: task-r11-b-4
+        title: "Double-bind guard: bind() returns error if model_id already has active binding"
+        status: pending
+      - id: task-r11-b-5
+        title: "Double-release guard: release() is a no-op if model_id has no active binding"
+        status: pending
+      - id: task-r11-b-6
+        title: "Unit tests: plan -> bind -> release lifecycle, double-bind error, double-release no-op"
+        status: pending
+
+  - id: phase-r11-c
+    title: "Pressure handling and trace integration"
+    status: pending
+    tasks:
+      - id: task-r11-c-0
+        title: "MemoryOrchestrator::handle_pressure(policy) dispatch (Reject: return error, Evict: release LRU binding, Compact: re-plan, Degrade: reduce quality guarantees + emit trace)"
+        status: pending
+      - id: task-r11-c-1
+        title: "LRU eviction tracking (last_used_ timestamp per model_id, updated on bind/release)"
+        status: pending
+      - id: task-r11-c-2
+        title: "Compact policy: re-run plan() on remaining contexts, rebind with new plan"
+        status: pending
+      - id: task-r11-c-3
+        title: "TraceCollector integration (emit PlanGenerated, BindingCreated, BindingReleased, PressureHandled events)"
+        status: pending
+      - id: task-r11-c-4
+        title: "Unit tests: pressure handling for each policy, LRU eviction order"
+        status: pending
+      - id: task-r11-c-5
+        title: "Phase exit criteria: all tests pass, API frozen, trace events verified"
+        status: pending

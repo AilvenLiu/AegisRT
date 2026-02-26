@@ -1,0 +1,96 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r22-jetson-examples-release
+  description: >
+    Optimise for Jetson Orin, build example applications, and prepare the v1.0-alpha
+    community release. Final roadmap -- completion marks end of the development path
+    from scratch to v1.0-alpha. Depends on r21 backend integration.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r22-a
+  task: task-r22-a-0
+
+phases:
+  - id: phase-r22-a
+    title: "Jetson Orin optimisation"
+    status: pending
+    tasks:
+      - id: task-r22-a-0
+        title: "Design doc: Jetson Orin architecture differences (unified memory, NVDLAv2, power modes)"
+        status: pending
+      - id: task-r22-a-1
+        title: "Jetson profiling: run full benchmark suite on aarch64, identify bottlenecks vs x86_64"
+        status: pending
+      - id: task-r22-a-2
+        title: "Unified memory awareness: detect integrated GPU via cudaDeviceProp.integrated, adjust allocation strategy"
+        status: pending
+      - id: task-r22-a-3
+        title: "DeviceMemoryPool: skip cudaMemcpy for unified memory (host and device share physical memory)"
+        status: pending
+      - id: task-r22-a-4
+        title: "Power mode handling: query nvpmodel via popen(), adjust WCET safety margins per power mode"
+        status: pending
+      - id: task-r22-a-5
+        title: "WCETProfiler: add JetsonPowerMode enum and per-mode profile storage"
+        status: pending
+      - id: task-r22-a-6
+        title: "Jetson hardware validation: run full test suite on Jetson Orin hardware, all tests pass"
+        status: pending
+
+  - id: phase-r22-b
+    title: "Example applications"
+    status: pending
+    tasks:
+      - id: task-r22-b-0
+        title: "examples/multi_model_demo: 3 models, EDF scheduling, trace output to JSON, documented"
+        status: pending
+      - id: task-r22-b-1
+        title: "examples/multi_model_demo: CMakeLists.txt, README.md with build and run instructions"
+        status: pending
+      - id: task-r22-b-2
+        title: "examples/autonomous_driving: perception + prediction + planning models, RMS scheduling"
+        status: pending
+      - id: task-r22-b-3
+        title: "examples/autonomous_driving: simulate 100ms cycle, verify all deadlines met"
+        status: pending
+      - id: task-r22-b-4
+        title: "examples/admission_demo: show admission rejection with rationale, then reconfigure to admit"
+        status: pending
+      - id: task-r22-b-5
+        title: "All examples use MockBackend by default (no real model files required to run)"
+        status: pending
+      - id: task-r22-b-6
+        title: "examples/README.md: overview of all examples, what each demonstrates"
+        status: pending
+
+  - id: phase-r22-c
+    title: "v1.0-alpha release preparation"
+    status: pending
+    tasks:
+      - id: task-r22-c-0
+        title: "CONTRIBUTING.md: development workflow, code style, PR process, branch naming"
+        status: pending
+      - id: task-r22-c-1
+        title: "GitHub issue templates: .github/ISSUE_TEMPLATE/bug_report.md, feature_request.md, question.md"
+        status: pending
+      - id: task-r22-c-2
+        title: "GitHub PR template: .github/PULL_REQUEST_TEMPLATE.md (checklist: tests, docs, ADR if needed)"
+        status: pending
+      - id: task-r22-c-3
+        title: "CHANGELOG.md: v1.0-alpha entry (what works, known limitations, future roadmap)"
+        status: pending
+      - id: task-r22-c-4
+        title: "Version bump: CMakeLists.txt project VERSION 1.0.0-alpha, include/aegisrt/version.hpp"
+        status: pending
+      - id: task-r22-c-5
+        title: "Final CI run: all tests pass, all benchmarks green, Doxygen clean"
+        status: pending
+      - id: task-r22-c-6
+        title: "Git tag: v1.0-alpha on master branch after final CI pass"
+        status: pending

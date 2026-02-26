@@ -1,0 +1,93 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r20-documentation
+  description: >
+    Complete all documentation required for the MVP: API.md, TUTORIAL.md, Doxygen,
+    ADRs, README update. Goal: new engineer understands AegisRT in under 2 hours.
+    Depends on r19 case studies being complete.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r20-a
+  task: task-r20-a-0
+
+phases:
+  - id: phase-r20-a
+    title: "API reference and tutorial"
+    status: pending
+    tasks:
+      - id: task-r20-a-0
+        title: "Design doc: documentation structure (what goes in API.md vs TUTORIAL.md vs Doxygen)"
+        status: pending
+      - id: task-r20-a-1
+        title: "docs/API.md: Layer 1 public API (CudaStream, CudaEvent, DeviceMemoryPool, TraceCollector)"
+        status: pending
+      - id: task-r20-a-2
+        title: "docs/API.md: Layer 2 public API (ExecutionContext, MemoryOrchestrator, RuntimeBackend)"
+        status: pending
+      - id: task-r20-a-3
+        title: "docs/API.md: Layer 3 public API (WCETProfiler, AdmissionController, Scheduler)"
+        status: pending
+      - id: task-r20-a-4
+        title: "docs/TUTORIAL.md: getting started (build, run demo, interpret trace output)"
+        status: pending
+      - id: task-r20-a-5
+        title: "docs/TUTORIAL.md: adding a new model (profile -> admit -> schedule -> observe)"
+        status: pending
+      - id: task-r20-a-6
+        title: "docs/TUTORIAL.md: interpreting admission rejection (rationale string, what to change)"
+        status: pending
+      - id: task-r20-a-7
+        title: "docs/BENCHMARKS.md: verify content from r19 is complete and accurate (all 5 MVP criteria documented)"        
+        status: pending
+
+  - id: phase-r20-b
+    title: "Doxygen and inline documentation"
+    status: pending
+    tasks:
+      - id: task-r20-b-0
+        title: "Doxyfile configuration (INPUT=src/ include/, OUTPUT_DIRECTORY=docs/doxygen/, EXTRACT_ALL=YES)"
+        status: pending
+      - id: task-r20-b-1
+        title: "Doxygen coverage pass: all public APIs in include/ have @brief, @param, @return"
+        status: pending
+      - id: task-r20-b-2
+        title: "Doxygen coverage pass: all public APIs in src/ have @brief for non-trivial methods"
+        status: pending
+      - id: task-r20-b-3
+        title: "CI step: generate Doxygen HTML, fail if any undocumented public symbol"
+        status: pending
+      - id: task-r20-b-4
+        title: "docs/doxygen/ added to .gitignore (generated, not committed)"
+        status: pending
+
+  - id: phase-r20-c
+    title: "ADRs, README, and external review simulation"
+    status: pending
+    tasks:
+      - id: task-r20-c-0
+        title: "docs/adr/001-raii-cuda-wrappers.md (why RAII over raw CUDA handles)"
+        status: pending
+      - id: task-r20-c-1
+        title: "docs/adr/002-non-preemptive-scheduling.md (why non-preemptive for GPU, RTA adaptation)"
+        status: pending
+      - id: task-r20-c-2
+        title: "docs/adr/003-bin-packing-memory.md (why FFD, alternatives considered)"
+        status: pending
+      - id: task-r20-c-3
+        title: "docs/adr/004-result-type-no-exceptions.md (why Result<T> over exceptions)"
+        status: pending
+      - id: task-r20-c-4
+        title: "README.md update (current status, build instructions, quick start, link to docs/)"
+        status: pending
+      - id: task-r20-c-5
+        title: "External review simulation: walk through docs as a new engineer, identify gaps"
+        status: pending
+      - id: task-r20-c-6
+        title: "Phase 4 exit criteria checklist (all docs complete, Doxygen CI green, ADRs written)"
+        status: pending

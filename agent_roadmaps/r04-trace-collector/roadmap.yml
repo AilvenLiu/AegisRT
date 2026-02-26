@@ -1,0 +1,119 @@
+# roadmap.yml -- Canonical Execution State
+roadmap:
+  name: r04-trace-collector
+  description: >
+    Implement TraceCollector: the observability backbone of AegisRT. Includes
+    Timestamp and Duration types, a thread-safe ring buffer, structured TraceEvent
+    with rationale fields, query API with filters, and JSON export. Pure C++ with
+    no CUDA dependency. Every component in Layer 2 and Layer 3 injects events here.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r04-a
+  task: task-r04-a-0
+
+phases:
+
+  - id: phase-r04-a
+    title: "Core Types: Timestamp, Duration, TraceEvent"
+    status: pending
+    tasks:
+      - id: task-r04-a-0
+        title: "Timestamp type: monotonic clock (steady_clock), nanosecond resolution, now() factory, arithmetic operators"
+        status: pending
+        notes: "Timestamp wraps std::chrono::steady_clock::time_point. Provides operator- returning Duration."
+
+      - id: task-r04-a-1
+        title: "Duration type: integer nanoseconds, from_nanos/from_micros/from_millis/from_seconds factories"
+        status: pending
+        notes: "Integer nanoseconds avoids floating-point precision loss. Provides to_nanos/to_micros/to_millis."
+
+      - id: task-r04-a-2
+        title: "Duration arithmetic: operator+, operator-, operator*, operator/, comparison operators"
+        status: pending
+
+      - id: task-r04-a-3
+        title: "TraceEvent struct: event_id (UUID string), event_type, component, timestamp, duration, model_id, rationale"
+        status: pending
+        notes: "Also: request_id, attributes map<string,string>, severity (Info/Warning/Error/Critical)."
+
+      - id: task-r04-a-4
+        title: "TraceEventBuilder: fluent builder for TraceEvent (with_type, with_component, with_rationale, build)"
+        status: pending
+        notes: "Builder pattern prevents partially-constructed events. build() validates required fields."
+
+      - id: task-r04-a-5
+        title: "Unit tests for Timestamp (now() monotonicity, arithmetic), Duration (factories, arithmetic, comparison)"
+        status: pending
+
+  - id: phase-r04-b
+    title: "TraceCollector Ring Buffer and Thread Safety"
+    status: pending
+    tasks:
+      - id: task-r04-b-0
+        title: "TraceCollector constructor: explicit TraceCollector(size_t buffer_size = 10000)"
+        status: pending
+        notes: "Allocates fixed-size circular buffer. buffer_size must be power of 2 for efficient modulo."
+
+      - id: task-r04-b-1
+        title: "TraceCollector::record(TraceEvent): thread-safe insertion, drop-oldest on overflow"
+        status: pending
+        notes: "Use std::mutex for thread safety. Drop-oldest policy: never block producers."
+
+      - id: task-r04-b-2
+        title: "TraceCollector::record_now(event_type, component, rationale): convenience overload sets timestamp"
+        status: pending
+        notes: "Sets event.timestamp = Timestamp::now() before inserting. Reduces boilerplate."
+
+      - id: task-r04-b-3
+        title: "TraceCollector::size() and TraceCollector::clear(): size returns current event count, clear empties buffer"
+        status: pending
+
+      - id: task-r04-b-4
+        title: "Thread-safety test: 8 threads recording concurrently, verify no data races (TSan)"
+        status: pending
+        notes: "Run under ThreadSanitizer. Zero data races required."
+
+      - id: task-r04-b-5
+        title: "Overflow test: fill buffer beyond capacity, verify oldest events dropped, newest retained"
+        status: pending
+
+  - id: phase-r04-c
+    title: "Query API and JSON Export"
+    status: pending
+    tasks:
+      - id: task-r04-c-0
+        title: "TraceCollector::query() with filters: start/end Timestamp, event_type string, model_id string"
+        status: pending
+        notes: "All filters are optional (std::optional). Returns vector<TraceEvent> matching all filters."
+
+      - id: task-r04-c-1
+        title: "TraceCollector::query_by_component(component) and query_by_severity(severity) convenience methods"
+        status: pending
+
+      - id: task-r04-c-2
+        title: "TraceCollector::export_json(path): write all events to JSON file, valid json.loads() parseable"
+        status: pending
+        notes: "JSON schema: {events: [{event_id, event_type, component, timestamp_ns, duration_ns, ...}]}"
+
+      - id: task-r04-c-3
+        title: "JSON export: timestamps as integer nanoseconds since epoch, durations as integer nanoseconds"
+        status: pending
+        notes: "Integer representation avoids floating-point precision loss in JSON."
+
+      - id: task-r04-c-4
+        title: "TraceCollector::reconstruct_decision_chain(event_id) -> vector<TraceEvent>"
+        status: pending
+        notes: "Returns all events with matching request_id, sorted by timestamp. Foundation for r18 AuditTrail."
+
+      - id: task-r04-c-5
+        title: "Unit tests: record/query round-trip, filter accuracy, JSON export parseable by Python json.loads()"
+        status: pending
+
+      - id: task-r04-c-6
+        title: "clang-tidy clean; Doxygen comments on all public APIs; no CUDA dependency in any header"
+        status: pending

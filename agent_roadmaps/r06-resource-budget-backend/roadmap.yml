@@ -1,0 +1,116 @@
+# roadmap.yml -- Canonical Execution State
+roadmap:
+  name: r06-resource-budget-backend
+  description: >
+    Implement the Layer 2 foundation types: ModelID strong typedef, Result<T> error
+    type, ResourceBudget with validation, RuntimeBackend pure abstract interface, and
+    MockBackend test double with configurable latency and error injection. These are
+    the contracts that ExecutionContext (r07) and all higher layers depend on.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r06-a
+  task: task-r06-a-0
+
+phases:
+
+  - id: phase-r06-a
+    title: "Common Types: ModelID, ErrorCode, Result<T>"
+    status: pending
+    tasks:
+      - id: task-r06-a-0
+        title: "ModelID strong typedef: wraps std::string, equality/hash/comparison operators, to_string()"
+        status: pending
+        notes: "Strong typedef prevents accidental string-to-ModelID conversion. Used everywhere in Layer 2+."
+
+      - id: task-r06-a-1
+        title: "ErrorCode enum class: BudgetExceeded, BackendError, InvalidArgument, NotFound, Timeout, InternalError"
+        status: pending
+
+      - id: task-r06-a-2
+        title: "Error struct: ErrorCode code, std::string message, std::string context (function/file where error occurred)"
+        status: pending
+
+      - id: task-r06-a-3
+        title: "Result<T> template: holds T on success or Error on failure; ok(), error(), value(), unwrap()"
+        status: pending
+        notes: "Result<void> specialisation for operations with no return value. Never throws; always returns Result."
+
+      - id: task-r06-a-4
+        title: "Result<T> monadic operations: map(f), and_then(f), or_else(f) for chaining"
+        status: pending
+        notes: "map: transform value if ok. and_then: chain Result-returning functions. or_else: handle error."
+
+      - id: task-r06-a-5
+        title: "Unit tests for ModelID (equality, hash, comparison), Result<T> (ok/error paths, monadic ops)"
+        status: pending
+
+  - id: phase-r06-b
+    title: "ResourceBudget and Execution Types"
+    status: pending
+    tasks:
+      - id: task-r06-b-0
+        title: "ResourceBudget struct: memory_limit_bytes, stream_limit, compute_budget (Duration), is_valid(), validation_error()"
+        status: pending
+        notes: "is_valid(): memory_limit > 0, stream_limit > 0, compute_budget > 0. validation_error() describes first violation."
+
+      - id: task-r06-b-1
+        title: "ResourceBudget::default_budget() factory: reasonable defaults for development (512MB, 4 streams, 100ms)"
+        status: pending
+
+      - id: task-r06-b-2
+        title: "TensorDescriptor struct: name, shape (vector<int64_t>), dtype (enum: Float32/Float16/Int8/Int32)"
+        status: pending
+        notes: "Used in ExecutionRequest and ExecutionResult to describe input/output tensors."
+
+      - id: task-r06-b-3
+        title: "ExecutionRequest struct: model_id, request_id (UUID), input_tensors (vector<TensorDescriptor>), deadline"
+        status: pending
+
+      - id: task-r06-b-4
+        title: "ExecutionResult struct: model_id, request_id, output_tensors, actual_latency (Duration), success flag"
+        status: pending
+
+      - id: task-r06-b-5
+        title: "Unit tests for ResourceBudget (valid/invalid budgets, boundary conditions, default_budget)"
+        status: pending
+
+  - id: phase-r06-c
+    title: "RuntimeBackend Interface and MockBackend"
+    status: pending
+    tasks:
+      - id: task-r06-c-0
+        title: "BackendCapabilities struct: max_batch_size, supported_dtypes, requires_pinned_memory, backend_name"
+        status: pending
+
+      - id: task-r06-c-1
+        title: "RuntimeBackend pure abstract class: execute, load, unload, capabilities, virtual destructor"
+        status: pending
+        notes: "execute(request) -> Result<ExecutionResult>. load(model_path) -> Result<void>. No default implementations."
+
+      - id: task-r06-c-2
+        title: "MockBackend in tests/mocks/: configurable fixed latency, random latency with seed, call tracking"
+        status: pending
+        notes: "MockBackend lives in tests/mocks/, never in src/. Implements RuntimeBackend."
+
+      - id: task-r06-c-3
+        title: "MockBackend error injection: inject_error_on_call(n) fails on nth call; inject_error_always()"
+        status: pending
+
+      - id: task-r06-c-4
+        title: "MockBackend call tracking: call_count(), last_request(), execution_history(), reset()"
+        status: pending
+        notes: "execution_history() returns vector of all ExecutionRequests received. Used in integration tests."
+
+      - id: task-r06-c-5
+        title: "MockBackend latency simulation: simulate_latency(Duration) sleeps for specified duration"
+        status: pending
+        notes: "Uses std::this_thread::sleep_for. Needed to test WCET profiler with realistic timing."
+
+      - id: task-r06-c-6
+        title: "Unit tests for MockBackend (latency injection, error injection, call tracking, reset)"
+        status: pending

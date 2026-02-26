@@ -1,0 +1,90 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r19-export-and-benchmarks
+  description: >
+    Implement trace export adapters (JSON, CSV, Perfetto), validate determinism with
+    automated benchmarks, and produce the 4 MVP case studies. Depends on r18
+    AuditTrail and MetricsAggregator.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r19-a
+  task: task-r19-a-0
+
+phases:
+  - id: phase-r19-a
+    title: "Export adapters"
+    status: pending
+    tasks:
+      - id: task-r19-a-0
+        title: "Design doc: export format schemas (JSON event schema, CSV columns, Perfetto trace format)"
+        status: pending
+      - id: task-r19-a-1
+        title: "TraceExporter abstract base class (export(collector, path) -> Result<void>)"
+        status: pending
+      - id: task-r19-a-2
+        title: "JsonTraceExporter (full event schema: type, timestamp_ns, model_id, request_id, chain_id, payload)"
+        status: pending
+      - id: task-r19-a-3
+        title: "CsvTraceExporter (columns: timestamp_ns, event_type, model_id, request_id, payload)"
+        status: pending
+      - id: task-r19-a-4
+        title: "PerfettoTraceExporter (chrome://tracing JSON format: ph, ts, pid, tid, name, args)"
+        status: pending
+      - id: task-r19-a-5
+        title: "Unit tests: JSON round-trip (export then parse, verify all events present), CSV column count"
+        status: pending
+      - id: task-r19-a-6
+        title: "Unit tests: Perfetto output is valid JSON parseable by chrome://tracing"
+        status: pending
+
+  - id: phase-r19-b
+    title: "Determinism benchmarks"
+    status: pending
+    tasks:
+      - id: task-r19-b-0
+        title: "Determinism benchmark harness (1000-invocation test, collect decision latencies)"
+        status: pending
+      - id: task-r19-b-1
+        title: "Coefficient of variation computation (CV = stddev / mean)"
+        status: pending
+      - id: task-r19-b-2
+        title: "Determinism assertion (CV < 5% for scheduling decision latency)"
+        status: pending
+      - id: task-r19-b-3
+        title: "Determinism benchmark CI integration (fails if CV >= 5%)"
+        status: pending
+      - id: task-r19-b-4
+        title: "Latency histogram output (bucket counts for 0-10us, 10-50us, 50-100us, >100us)"
+        status: pending
+
+  - id: phase-r19-c
+    title: "MVP case studies"
+    status: pending
+    tasks:
+      - id: task-r19-c-0
+        title: "Case study 1: admission control validation (3 models, EDF, verify zero deadline violations over 1000 cycles)"
+        status: pending
+      - id: task-r19-c-1
+        title: "Case study 2: determinism validation (2 concurrent models, CV < 5% over 1000 invocations)"
+        status: pending
+      - id: task-r19-c-2
+        title: "Case study 3: memory efficiency (3 models, MemoryOrchestrator, verify >= 15% reduction)"
+        status: pending
+      - id: task-r19-c-3
+        title: "Case study 4: admission rejection (4th model exceeds bound, verify explicit rejection with rationale)"
+        status: pending
+      - id: task-r19-c-4
+        title: "docs/CASE_STUDIES.md (results, methodology, pass/fail for each case study)"
+        status: pending
+      - id: task-r19-c-5
+        title: "docs/BENCHMARKS.md (all MVP benchmark results: scheduling overhead, determinism CV, admission correctness, memory efficiency, explainability)"
+        status: pending
+      - id: task-r19-c-6
+        title: "CI integration: all 4 case studies run in CI, fail on regression"
+        status: pending

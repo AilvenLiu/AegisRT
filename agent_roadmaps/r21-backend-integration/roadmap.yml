@@ -1,0 +1,99 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r21-backend-integration
+  description: >
+    Integrate real inference backends: TensorRTBackend, TVMBackend, ONNXBackend.
+    Validates that AegisRT works with real models, not just simulated workloads.
+    Depends on r06 RuntimeBackend interface and r07 ExecutionContext.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r21-a
+  task: task-r21-a-0
+
+phases:
+  - id: phase-r21-a
+    title: "TensorRT backend"
+    status: pending
+    tasks:
+      - id: task-r21-a-0
+        title: "Design doc: backend integration strategy (optional dependencies, CMake find_package guards, stub fallback)"
+        status: pending
+      - id: task-r21-a-1
+        title: "TensorRT dependency: cmake/FindTensorRT.cmake with version check (>= 8.6)"
+        status: pending
+      - id: task-r21-a-2
+        title: "TensorRTBackend class skeleton (implements RuntimeBackend, holds IRuntime, ICudaEngine, IExecutionContext)"
+        status: pending
+      - id: task-r21-a-3
+        title: "TensorRTBackend::load(engine_path) -> Result<void> (deserialise .trt engine file)"
+        status: pending
+      - id: task-r21-a-4
+        title: "TensorRTBackend::execute(request) -> Result<ExecutionResult> (enqueue on CudaStream, synchronise)"
+        status: pending
+      - id: task-r21-a-5
+        title: "TensorRTBackend::unload() (destroy IExecutionContext, ICudaEngine, IRuntime in reverse order)"
+        status: pending
+      - id: task-r21-a-6
+        title: "TensorRT CUDA error propagation (map TRT errors to AegisRT ErrorCode)"
+        status: pending
+      - id: task-r21-a-7
+        title: "Integration test: load real .trt engine, execute, verify output shape (requires TRT installed)"
+        status: pending
+
+  - id: phase-r21-b
+    title: "TVM and ONNX Runtime backends"
+    status: pending
+    tasks:
+      - id: task-r21-b-0
+        title: "TVM dependency: cmake/FindTVM.cmake, link against libtvm_runtime.so"
+        status: pending
+      - id: task-r21-b-1
+        title: "TVMBackend::load(lib_path) -> Result<void> (load .so module via tvm::runtime::Module)"
+        status: pending
+      - id: task-r21-b-2
+        title: "TVMBackend::execute(request) -> Result<ExecutionResult> (set inputs, run, get outputs)"
+        status: pending
+      - id: task-r21-b-3
+        title: "ONNX Runtime dependency: cmake/FindONNXRuntime.cmake, link against libonnxruntime.so"
+        status: pending
+      - id: task-r21-b-4
+        title: "ONNXBackend::load(model_path) -> Result<void> (create OrtSession with CUDA provider)"
+        status: pending
+      - id: task-r21-b-5
+        title: "ONNXBackend::execute(request) -> Result<ExecutionResult> (Run() with input/output names)"
+        status: pending
+      - id: task-r21-b-6
+        title: "ONNXBackend::unload() (destroy OrtSession, OrtEnv)"
+        status: pending
+      - id: task-r21-b-7
+        title: "Integration tests: TVM and ONNX backends with real model files (guarded by HAVE_TVM/HAVE_ONNX)"
+        status: pending
+
+  - id: phase-r21-c
+    title: "Backend validation and CI integration"
+    status: pending
+    tasks:
+      - id: task-r21-c-0
+        title: "Backend conformance test suite (tests that any RuntimeBackend implementation must pass)"
+        status: pending
+      - id: task-r21-c-1
+        title: "Conformance tests: load/execute/unload lifecycle, error propagation, double-load guard"
+        status: pending
+      - id: task-r21-c-2
+        title: "MockBackend conformance: verify MockBackend passes all conformance tests"
+        status: pending
+      - id: task-r21-c-3
+        title: "CI matrix: unit tests always run (MockBackend), integration tests run only if TRT/TVM/ONNX available"
+        status: pending
+      - id: task-r21-c-4
+        title: "Backend selection guide in docs/BACKENDS.md (when to use TRT vs TVM vs ONNX)"
+        status: pending
+      - id: task-r21-c-5
+        title: "API freeze: all backend headers finalised"
+        status: pending

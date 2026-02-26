@@ -1,0 +1,96 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r16-scheduling-policies
+  description: >
+    Implement scheduling policy abstraction and two concrete policies: FIFOPolicy and
+    EDFPolicy. Decouples scheduling logic from the Scheduler orchestration loop.
+    Depends on r14 AdmissionController and r06 ExecutionRequest/Result types.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r16-a
+  task: task-r16-a-0
+
+phases:
+  - id: phase-r16-a
+    title: "SchedulingPolicy interface and request types"
+    status: pending
+    tasks:
+      - id: task-r16-a-0
+        title: "Design doc: policy interface contract (select_next semantics, empty queue behaviour, thread safety)"
+        status: pending
+      - id: task-r16-a-1
+        title: "ScheduledTask struct (model_id, deadline, priority, wcet, submission_time, request_id)"
+        status: pending
+      - id: task-r16-a-2
+        title: "SchedulingPolicy pure abstract class (select_next, enqueue, remove_model, update_profile, size, policy_name, policy_description, metrics, virtual destructor)"
+        status: pending
+      - id: task-r16-a-3
+        title: "SchedulingPolicy::select_next() -> optional<ScheduledTask> (nullopt if queue empty)"
+        status: pending
+      - id: task-r16-a-4
+        title: "PolicyMetrics struct (total_decisions, deadline_misses, avg_decision_time, decisions_by_model map)"
+        status: pending
+      - id: task-r16-a-4b
+        title: "Deadline miss helper: is_deadline_missed(task, current_time) -> bool"
+        status: pending
+      - id: task-r16-a-5
+        title: "Unit tests: interface contract tests using a minimal stub policy"
+        status: pending
+
+  - id: phase-r16-b
+    title: "FIFOPolicy and EDFPolicy implementations"
+    status: pending
+    tasks:
+      - id: task-r16-b-0
+        title: "FIFOPolicy (select_next returns oldest submission_time, std::queue<ScheduledTask> internally)"
+        status: pending
+      - id: task-r16-b-1
+        title: "FIFOPolicy::enqueue() and remove_model() (O(1) enqueue, O(n) remove)"
+        status: pending
+      - id: task-r16-b-2
+        title: "EDFPolicy (select_next returns earliest absolute deadline, std::priority_queue internally)"
+        status: pending
+      - id: task-r16-b-3
+        title: "EDFPolicy comparator: primary sort by deadline, tie-break by submission_time"
+        status: pending
+      - id: task-r16-b-4
+        title: "EDFPolicy::remove_model() (rebuild priority_queue without removed model)"
+        status: pending
+      - id: task-r16-b-5
+        title: "RMSPolicy (select_next returns highest priority = shortest period, std::priority_queue)"
+        status: pending
+      - id: task-r16-b-5b
+        title: "PriorityPolicy (select_next returns lowest priority number = highest priority, configurable tie-breaking)"
+        status: pending
+      - id: task-r16-b-6
+        title: "Unit tests: FIFOPolicy ordering, EDFPolicy ordering, RMSPolicy ordering, PriorityPolicy ordering"
+        status: pending
+
+  - id: phase-r16-c
+    title: "Policy validation and comparative tests"
+    status: pending
+    tasks:
+      - id: task-r16-c-0
+        title: "Comparative test: EDF selects different task than FIFO for same input (verify both are correct)"
+        status: pending
+      - id: task-r16-c-1
+        title: "Comparative test: RMS selects by priority, EDF by deadline, FIFO by arrival"
+        status: pending
+      - id: task-r16-c-2
+        title: "Empty queue test: select_next() returns nullopt, does not crash"
+        status: pending
+      - id: task-r16-c-3
+        title: "Single-element test: select_next() returns the only element"
+        status: pending
+      - id: task-r16-c-4
+        title: "Deadline miss detection: is_deadline_missed() returns true when current_time > deadline"
+        status: pending
+      - id: task-r16-c-5
+        title: "API freeze: include/aegisrt/layer3/scheduling_policy.hpp finalised"
+        status: pending

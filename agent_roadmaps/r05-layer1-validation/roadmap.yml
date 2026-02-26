@@ -1,0 +1,103 @@
+# roadmap.yml -- Canonical Execution State
+roadmap:
+  name: r05-layer1-validation
+  description: >
+    Dedicated validation pass for Layer 1 (r02-r04). No new production features.
+    Verifies coverage >70% per file, zero leaks (cuda-memcheck), zero data races
+    (TSan), zero UB (UBSan), zero static analysis warnings, cross-compilation
+    success, and freezes the public API before Layer 2 builds on top.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r05-a
+  task: task-r05-a-0
+
+phases:
+
+  - id: phase-r05-a
+    title: "Coverage Measurement and Gap Closure"
+    status: pending
+    tasks:
+      - id: task-r05-a-0
+        title: "Coverage toolchain: CMake coverage target using gcov/llvm-cov, HTML report generation"
+        status: pending
+        notes: "Add coverage preset to CMakePresets.json: -fprofile-arcs -ftest-coverage. Target: coverage-report."
+
+      - id: task-r05-a-1
+        title: "Baseline coverage measurement: run all Layer 1 tests, generate per-file coverage report"
+        status: pending
+        notes: "Identify files below 70% threshold. Document gaps."
+
+      - id: task-r05-a-2
+        title: "Coverage gap closure for src/cuda/ (CudaContext, CudaStream, CudaEvent): reach >70% per file"
+        status: pending
+        notes: "Add targeted tests for uncovered branches: error paths, edge cases, destructor paths."
+
+      - id: task-r05-a-3
+        title: "Coverage gap closure for src/trace/ (TraceCollector, Timestamp, Duration): reach >70% per file"
+        status: pending
+
+      - id: task-r05-a-4
+        title: "Coverage CI step: add coverage job to .github/workflows/ci.yml, fail if any file < 70%"
+        status: pending
+
+  - id: phase-r05-b
+    title: "Memory Safety and Sanitizer Integration"
+    status: pending
+    tasks:
+      - id: task-r05-b-0
+        title: "cuda-memcheck CI step: run all CUDA tests under cuda-memcheck --leak-check full"
+        status: pending
+        notes: "Add cuda-memcheck job to CI. Must report zero leaks and zero invalid accesses."
+
+      - id: task-r05-b-1
+        title: "AddressSanitizer CI step: build with asan preset, run all tests, zero ASAN errors"
+        status: pending
+
+      - id: task-r05-b-2
+        title: "UndefinedBehaviorSanitizer CI step: build with ubsan preset, run all tests, zero UBSAN errors"
+        status: pending
+
+      - id: task-r05-b-3
+        title: "ThreadSanitizer CI step: build with tsan preset, run TraceCollector concurrency tests, zero races"
+        status: pending
+
+      - id: task-r05-b-4
+        title: "Fix any sanitizer errors found: document each fix with root cause analysis"
+        status: pending
+        notes: "Do not suppress sanitizer errors. Fix the underlying issue."
+
+  - id: phase-r05-c
+    title: "Static Analysis, Cross-Compile, and API Freeze"
+    status: pending
+    tasks:
+      - id: task-r05-c-0
+        title: "clang-tidy full pass on all src/cuda/ and src/trace/ files: zero warnings"
+        status: pending
+
+      - id: task-r05-c-1
+        title: "cppcheck full pass on all src/cuda/ and src/trace/ files: zero errors"
+        status: pending
+
+      - id: task-r05-c-2
+        title: "Cross-compilation validation: build all Layer 1 tests for aarch64, verify no link errors"
+        status: pending
+        notes: "Tests do not run on x86_64 (require Jetson hardware), but must compile and link."
+
+      - id: task-r05-c-3
+        title: "Integration smoke test: CudaContext + CudaStream + CudaEvent + DeviceMemoryPool + TraceCollector"
+        status: pending
+        notes: "Single test that exercises all Layer 1 components together. Proves they compose correctly."
+
+      - id: task-r05-c-4
+        title: "Layer 1 API freeze: review all public headers, document API contract, mark as stable"
+        status: pending
+        notes: "Add API_STABLE comment to each public header. Layer 2 will depend on these APIs."
+
+      - id: task-r05-c-5
+        title: "Phase 0 exit criteria checklist: document all criteria met, update roadmap.yml to completed"
+        status: pending

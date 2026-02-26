@@ -1,0 +1,102 @@
+# roadmap.yml -- Canonical Execution State
+
+roadmap:
+  name: r17-scheduler-core
+  description: >
+    Implement the central Scheduler orchestration loop and validate the complete Phase 3
+    system. Integrates admission control, policy selection, and execution dispatch.
+    Depends on r15 AdmissionController (with RTA) and r16 SchedulingPolicy.
+
+status:
+  active: false
+  blocked: false
+  completed: false
+
+current_focus:
+  phase: phase-r17-a
+  task: task-r17-a-0
+
+phases:
+  - id: phase-r17-a
+    title: "Scheduler skeleton and submission gate"
+    status: pending
+    tasks:
+      - id: task-r17-a-0
+        title: "Design doc: Scheduler orchestration loop (submit -> admit -> enqueue -> run_next -> dispatch -> trace)"
+        status: pending
+      - id: task-r17-a-1
+        title: "Scheduler::Config struct (max_pending_requests, scheduling_interval, enable_admission_control, enable_tracing)"
+        status: pending
+      - id: task-r17-a-1b
+        title: "Scheduler::create() factory (takes SchedulingPolicy, AdmissionController, DeviceMemoryPool, TraceCollector, Config)"
+        status: pending
+      - id: task-r17-a-2
+        title: "Scheduler::admit(context, request) -> Result<ModelID> (admission gate: analyze + bind memory + register)"
+        status: pending
+      - id: task-r17-a-3
+        title: "Scheduler::evict(model_id) (release memory binding, deregister from policy and admission state)"
+        status: pending
+      - id: task-r17-a-3b
+        title: "Scheduler::submit(model_id, priority, deadline) -> Result<RequestID> (enqueue execution request)"
+        status: pending
+      - id: task-r17-a-4
+        title: "Scheduler::start() / stop() / is_running() lifecycle (spawns orchestration_loop_ thread)"
+        status: pending
+      - id: task-r17-a-5
+        title: "ConcurrentQueue<ExecutionRequest> for lock-free MPMC pending request queue"
+        status: pending
+      - id: task-r17-a-6
+        title: "SchedulerMetrics struct (total_requests, completed, rejected, deadline_misses, avg_latency, p99_latency)"
+        status: pending
+      - id: task-r17-a-7
+        title: "Unit tests: admit model, evict model, submit request, start/stop lifecycle"
+        status: pending
+
+  - id: phase-r17-b
+    title: "run_next() execution loop and deadline miss detection"
+    status: pending
+    tasks:
+      - id: task-r17-b-0
+        title: "Scheduler::run_next() -> Result<ExecutionResult> (select + deadline check + execute + trace)"
+        status: pending
+      - id: task-r17-b-1
+        title: "Deadline miss detection in run_next() (check is_deadline_missed before dispatch)"
+        status: pending
+      - id: task-r17-b-2
+        title: "On deadline miss: emit DeadlineMiss trace event, return ErrorCode::DeadlineMissed"
+        status: pending
+      - id: task-r17-b-3
+        title: "Decision latency measurement (time from run_next() call to execution start, stored in ExecutionResult)"
+        status: pending
+      - id: task-r17-b-4
+        title: "Scheduling decision tracing (emit SchedulingDecision event: selected model, policy, deadline, WCRT)"
+        status: pending
+      - id: task-r17-b-5
+        title: "Unit tests: run_next() on empty queue, run_next() with deadline miss, run_next() success"
+        status: pending
+
+  - id: phase-r17-c
+    title: "Integration tests and Phase 3 validation"
+    status: pending
+    tasks:
+      - id: task-r17-c-0
+        title: "Integration test: 3-model workload, EDF policy, verify execution ordering matches deadlines"
+        status: pending
+      - id: task-r17-c-1
+        title: "Integration test: RMS policy, verify execution ordering matches priorities"
+        status: pending
+      - id: task-r17-c-2
+        title: "Integration test: admission rejection (4th model exceeds utilisation bound)"
+        status: pending
+      - id: task-r17-c-3
+        title: "Decision latency benchmark (automated, assert < 100 microseconds, runs in CI)"
+        status: pending
+      - id: task-r17-c-4
+        title: "Phase 3 exit criteria checklist (zero deadline violations in test workload, latency target met)"
+        status: pending
+      - id: task-r17-c-5
+        title: "docs/PHASE3_VALIDATION.md (scheduling results, latency measurements, admission decisions)"
+        status: pending
+      - id: task-r17-c-6
+        title: "API freeze: include/aegisrt/layer3/scheduler.hpp finalised"
+        status: pending

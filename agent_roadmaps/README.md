@@ -31,15 +31,14 @@ Every agent session **MUST begin** by checking the following section.
 
 ### 3.1 Current Status
 
-> **Active Roadmap**:    
-> [] None   
-> [x] Exists (see below)     
+> **Active Roadmap**:
+> [x] Exists (see below)
 
-**If active, fill exactly one entry below**:   
-- **Name** : <roadmap-name>
-- **Path** : agent_roadmaps/\<roadmap-name\>/
-- **Current Phase / Task** : \<as defined in roadmap.yml\>
-- **Status** : active | blocked | completing
+**Active roadmap**:
+- **Name**: r01-build-infrastructure
+- **Path**: agent_roadmaps/r01-build-infrastructure/
+- **Current Phase / Task**: phase-r01 / task-r01-0
+- **Status**: active
 
 If **no roadmap is active**, this section MUST explicitly say:
 
